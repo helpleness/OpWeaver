@@ -1,0 +1,69 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "epochs": {
+      "default": 20,
+      "maximum": 10000,
+      "minimum": 1,
+      "title": "Epochs",
+      "type": "integer"
+    },
+    "batch_size": {
+      "default": 32,
+      "maximum": 65536,
+      "minimum": 1,
+      "title": "Batch Size",
+      "type": "integer"
+    },
+    "learning_rate": {
+      "default": 0.01,
+      "exclusiveMinimum": 0,
+      "maximum": 10,
+      "title": "Learning Rate",
+      "type": "number"
+    },
+    "optimizer": {
+      "default": "AdamW",
+      "enum": [
+        "AdamW",
+        "SGD"
+      ],
+      "title": "Optimizer",
+      "type": "string"
+    },
+    "loss": {
+      "default": "CrossEntropyLoss",
+      "enum": [
+        "CrossEntropyLoss",
+        "MSELoss"
+      ],
+      "title": "Loss",
+      "type": "string"
+    },
+    "samples": {
+      "default": 512,
+      "maximum": 1000000,
+      "minimum": 16,
+      "title": "Samples",
+      "type": "integer"
+    },
+    "seed": {
+      "default": 42,
+      "maximum": 2147483647,
+      "minimum": 0,
+      "title": "Seed",
+      "type": "integer"
+    },
+    "device": {
+      "default": "cpu",
+      "enum": [
+        "cpu",
+        "cuda"
+      ],
+      "title": "Device",
+      "type": "string"
+    }
+  },
+  "title": "TrainingConfig",
+  "type": "object"
+}

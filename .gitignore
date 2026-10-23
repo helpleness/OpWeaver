@@ -1,0 +1,16 @@
+.idea/
+.tools/
+.venv/
+__pycache__/
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+frontend/node_modules/
+frontend/dist/
+frontend/wailsjs/
+frontend/package.json.md5
+build/bin/
+projects/
+test-results/
+*.log
+*.tmp

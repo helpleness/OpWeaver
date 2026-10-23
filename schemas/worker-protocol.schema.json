@@ -1,0 +1,12 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://opweaver.local/schemas/worker-protocol-v1",
+  "title": "OpWeaver JSON Lines protocol v1",
+  "oneOf": [
+    {"type":"object","required":["protocol","id","method","params"],"additionalProperties":false,"properties":{"protocol":{"const":1},"id":{"type":"string"},"method":{"type":"string"},"params":{"type":"object"}}},
+    {"type":"object","required":["protocol","id","result"],"additionalProperties":false,"properties":{"protocol":{"const":1},"id":{"type":["string","null"]},"result":{}}},
+    {"type":"object","required":["protocol","id","error"],"additionalProperties":false,"properties":{"protocol":{"const":1},"id":{"type":["string","null"]},"error":{"type":"object","required":["code","message"],"properties":{"code":{"type":"string"},"message":{"type":"string"}}}}},
+    {"type":"object","required":["protocol","event","job_id","data"],"additionalProperties":false,"properties":{"protocol":{"const":1},"event":{"enum":["state","metric","log"]},"job_id":{"type":"string"},"data":{"type":"object"}}},
+    {"type":"object","required":["protocol","event","data"],"additionalProperties":false,"properties":{"protocol":{"const":1},"event":{"const":"code.task"},"data":{"type":"object","required":["id","state","project","source_hash"],"properties":{"id":{"type":"string"},"state":{"enum":["CREATED","RUNNING","STOPPING","COMPLETED","FAILED","CANCELLED"]},"project":{"type":"string"},"source_hash":{"type":"string"}}}}}
+  ]
+}

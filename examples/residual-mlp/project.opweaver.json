@@ -1,0 +1,6 @@
+{
+  "project_version": 1,
+  "name": "Residual classifier",
+  "graph_file": "graph.json",
+  "layout_file": "layout.json"
+}

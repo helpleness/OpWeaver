@@ -1,0 +1,63 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "file_path": {
+      "title": "File Path",
+      "type": "string"
+    },
+    "start_line": {
+      "anyOf": [
+        {
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Start Line"
+    },
+    "end_line": {
+      "anyOf": [
+        {
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "End Line"
+    },
+    "module_path": {
+      "default": "",
+      "title": "Module Path",
+      "type": "string"
+    },
+    "graph_node_id": {
+      "title": "Graph Node Id",
+      "type": "string"
+    },
+    "status": {
+      "default": "unmapped",
+      "enum": [
+        "exact",
+        "inferred",
+        "unmapped"
+      ],
+      "title": "Status",
+      "type": "string"
+    },
+    "reason": {
+      "default": "",
+      "title": "Reason",
+      "type": "string"
+    }
+  },
+  "required": [
+    "file_path",
+    "graph_node_id"
+  ],
+  "title": "SourceMapping",
+  "type": "object"
+}

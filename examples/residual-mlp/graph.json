@@ -1,0 +1,204 @@
+{
+  "ir_version": "1.0",
+  "id": "residual-mlp",
+  "metadata": {
+    "name": "Residual classifier",
+    "model_version": "0.1.0",
+    "description": ""
+  },
+  "nodes": [
+    {
+      "id": "input",
+      "label": "Input",
+      "operator": {
+        "id": "core.input",
+        "version": "1"
+      },
+      "params": {
+        "shape": [
+          "B",
+          8
+        ],
+        "dtype": "float32",
+        "device": "any"
+      },
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "out",
+          "tensor": null
+        }
+      ],
+      "share_with": null,
+      "module_ref": null
+    },
+    {
+      "id": "branch",
+      "label": "Linear",
+      "operator": {
+        "id": "core.linear",
+        "version": "1"
+      },
+      "params": {
+        "in_features": 8,
+        "out_features": 8,
+        "bias": true
+      },
+      "inputs": [
+        {
+          "name": "in",
+          "tensor": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "out",
+          "tensor": null
+        }
+      ],
+      "share_with": null,
+      "module_ref": null
+    },
+    {
+      "id": "relu",
+      "label": "ReLU",
+      "operator": {
+        "id": "core.relu",
+        "version": "1"
+      },
+      "params": {},
+      "inputs": [
+        {
+          "name": "in",
+          "tensor": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "out",
+          "tensor": null
+        }
+      ],
+      "share_with": null,
+      "module_ref": null
+    },
+    {
+      "id": "sum",
+      "label": "Add",
+      "operator": {
+        "id": "core.add",
+        "version": "1"
+      },
+      "params": {},
+      "inputs": [
+        {
+          "name": "a",
+          "tensor": null
+        },
+        {
+          "name": "b",
+          "tensor": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "out",
+          "tensor": null
+        }
+      ],
+      "share_with": null,
+      "module_ref": null
+    },
+    {
+      "id": "head",
+      "label": "Linear",
+      "operator": {
+        "id": "core.linear",
+        "version": "1"
+      },
+      "params": {
+        "in_features": 8,
+        "out_features": 3,
+        "bias": true
+      },
+      "inputs": [
+        {
+          "name": "in",
+          "tensor": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "out",
+          "tensor": null
+        }
+      ],
+      "share_with": null,
+      "module_ref": null
+    },
+    {
+      "id": "output",
+      "label": "Output",
+      "operator": {
+        "id": "core.output",
+        "version": "1"
+      },
+      "params": {},
+      "inputs": [
+        {
+          "name": "in",
+          "tensor": null
+        }
+      ],
+      "outputs": [],
+      "share_with": null,
+      "module_ref": null
+    }
+  ],
+  "edges": [
+    {
+      "id": "e1",
+      "source": "input",
+      "source_port": "out",
+      "target": "branch",
+      "target_port": "in"
+    },
+    {
+      "id": "e2",
+      "source": "branch",
+      "source_port": "out",
+      "target": "relu",
+      "target_port": "in"
+    },
+    {
+      "id": "e3",
+      "source": "relu",
+      "source_port": "out",
+      "target": "sum",
+      "target_port": "a"
+    },
+    {
+      "id": "e4",
+      "source": "input",
+      "source_port": "out",
+      "target": "sum",
+      "target_port": "b"
+    },
+    {
+      "id": "e5",
+      "source": "sum",
+      "source_port": "out",
+      "target": "head",
+      "target_port": "in"
+    },
+    {
+      "id": "e6",
+      "source": "head",
+      "source_port": "out",
+      "target": "output",
+      "target_port": "in"
+    }
+  ],
+  "modules": [],
+  "plugins": []
+}

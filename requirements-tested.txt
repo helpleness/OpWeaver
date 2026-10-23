@@ -1,0 +1,7 @@
+# Tested on Python 3.13.3. Install torch from the CPU index first for CPU-only use.
+# The development machine's torch build was 2.11.0+cu130; tests explicitly used CPU.
+torch==2.11.0
+pydantic==2.14.1
+onnx==1.22.0
+pytest==9.1.1
+ruff==0.17.2
