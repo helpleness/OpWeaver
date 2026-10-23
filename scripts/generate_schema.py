@@ -5,6 +5,7 @@ from pathlib import Path
 
 from opweaver.examples import mlp, residual
 from opweaver.ir import Graph
+from opweaver.lab_types import Experiment
 from opweaver.model_artifact import OnnxReport
 from opweaver.source import AnalysisGraph, SourceMapping
 from opweaver.training import TrainingConfig
@@ -21,6 +22,7 @@ for name, model in [
     ("analysis-graph", AnalysisGraph),
     ("source-mapping", SourceMapping),
     ("onnx-report", OnnxReport),
+    ("optimization-experiment", Experiment),
 ]:
     (root / "schemas" / f"{name}.schema.json").write_text(
         json.dumps(model.model_json_schema(), indent=2) + "\n", encoding="utf-8"

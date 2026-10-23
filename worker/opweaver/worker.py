@@ -8,12 +8,15 @@ from pathlib import Path
 
 import torch
 
+from .benchmark import compare_benchmarks
 from .builder import GraphModule
 from .code_tasks import CaptureTasks
 from .codegen import generate
 from .importers import builtin_importers
 from .ir import Graph
+from .lab_tasks import OptimizationTasks
 from .model_tasks import ModelTasks
+from .optimization import capabilities
 from .registry import builtin_registry
 from .source import inspect_source, patch_parameter
 from .storage import RunStore
@@ -28,8 +31,96 @@ class Worker:
         self.engine = TrainingEngine(lambda event: send({"protocol": 1, **event}))
         self.code_tasks = CaptureTasks(lambda event: send({"protocol": 1, **event}))
         self.model_tasks = ModelTasks(lambda event: send({"protocol": 1, **event}))
+        self.lab_tasks = OptimizationTasks(lambda event: send({"protocol": 1, **event}))
 
     def dispatch(self, method: str, params: dict):
+        if method.startswith("lab.dataset."):
+            from .datasets import availability, create_dataset, load_dataset
+
+            if method == "lab.dataset.create":
+                if self.engine.active() or any(
+                    t.is_alive()
+                    for manager in (self.code_tasks, self.model_tasks, self.lab_tasks)
+                    for t in manager.threads.values()
+                ):
+                    raise ValueError(
+                        "Wait until compute/import tasks finish before preparing datasets"
+                    )
+                return create_dataset(params["project"], params["config"])
+            if method == "lab.dataset.load":
+                return load_dataset(params["project"], params["id"])
+            if method == "lab.dataset.list":
+                return [
+                    {
+                        **r,
+                        "availability": availability(params["project"], {"evaluation": r})[
+                            "evaluation"
+                        ],
+                    }
+                    for r in RunStore(Path(params["project"])).metadata_list("dataset:")
+                ]
+            raise ValueError("Unknown dataset operation")
+        if method == "lab.backends":
+            from .optimization_environment import settings
+
+            model = (
+                ModelTasks().load(params["project"], params["source_model_id"])
+                if params.get("source_model_id")
+                else None
+            )
+            return capabilities(settings(params.get("project")), model)
+        if method.startswith("lab.environment."):
+            from .optimization_environment import configure, probe, settings
+
+            if method == "lab.environment.configure":
+                configure(params["project"], params["environment"])
+            return probe(settings(params["project"]), force=True)
+        if method == "lab.workflow.preview":
+            from .olive_adapter import preview
+
+            return preview(params["project"], params["config"])
+        if method == "lab.workflow.save":
+            from .olive_adapter import save_workflow
+
+            return save_workflow(params["project"], params["config"])
+        if method == "lab.workflow.list":
+            return RunStore(Path(params["project"])).metadata_list("optimization-workflow:")
+        if method == "lab.start":
+            if self.engine.active() or any(
+                t.is_alive()
+                for manager in [self.code_tasks, self.model_tasks]
+                for t in manager.threads.values()
+            ):
+                raise ValueError("Stop other compute/import tasks before benchmarking")
+            return self.lab_tasks.start(params)
+        if method == "lab.status":
+            return self.lab_tasks.snapshot(params["id"])
+        if method == "lab.stop":
+            return self.lab_tasks.stop(params["id"])
+        if method == "lab.history":
+            return self.lab_tasks.history(params["project"])
+        if method == "lab.load":
+            return self.lab_tasks.load(params["project"], params["id"])
+        if method == "lab.export":
+            return self.lab_tasks.export(params)
+        if method == "lab.compare":
+            reference = self.lab_tasks.load(params["project"], params["reference_id"])
+            candidate = self.lab_tasks.load(params["project"], params["candidate_id"])
+            left = reference["optimized"] or reference["baseline"]
+            right = candidate["optimized"] or candidate["baseline"]
+            return {
+                "reference_id": reference["id"],
+                "candidate_id": candidate["id"],
+                "reference": {k: v for k, v in (left or {}).items() if k != "latencies_ms"},
+                "candidate": {k: v for k, v in (right or {}).items() if k != "latencies_ms"},
+                "comparison": compare_benchmarks(left, right),
+            }
+        if method in ("train.start", "forward", "model.import.start", "code.capture.start") and any(
+            t.is_alive() for t in self.lab_tasks.threads.values()
+        ):
+            raise ValueError(
+                "Stop the Optimization Lab experiment before starting another compute task"
+            )
         if method == "environment":
             return environment()
         if method == "registry":
@@ -121,6 +212,7 @@ class Worker:
         if method == "train.history":
             return RunStore(Path(params["project"])).recover(set(self.engine.jobs))
         if method == "shutdown":
+            self.lab_tasks.shutdown()
             self.model_tasks.shutdown()
             self.code_tasks.shutdown()
             self.engine.shutdown()
@@ -160,6 +252,7 @@ def main():
     worker.engine.shutdown()
     worker.code_tasks.shutdown()
     worker.model_tasks.shutdown()
+    worker.lab_tasks.shutdown()
 
 
 if __name__ == "__main__":

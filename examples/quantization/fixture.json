@@ -1,0 +1,66 @@
+{
+  "scope": "Synthetic offline test fixture, not a trained task model or representative production dataset",
+  "mapping": {
+    "image": "pixels"
+  },
+  "shape": [
+    2,
+    3,
+    8,
+    8
+  ],
+  "datasets": {
+    "calibration": {
+      "seed": 2026,
+      "count": 32,
+      "files": [
+        "calibration/batch-000.npz",
+        "calibration/batch-001.npz",
+        "calibration/batch-002.npz",
+        "calibration/batch-003.npz",
+        "calibration/batch-004.npz",
+        "calibration/batch-005.npz",
+        "calibration/batch-006.npz",
+        "calibration/batch-007.npz",
+        "calibration/batch-008.npz",
+        "calibration/batch-009.npz",
+        "calibration/batch-010.npz",
+        "calibration/batch-011.npz",
+        "calibration/batch-012.npz",
+        "calibration/batch-013.npz",
+        "calibration/batch-014.npz",
+        "calibration/batch-015.npz",
+        "calibration/batch-016.npz",
+        "calibration/batch-017.npz",
+        "calibration/batch-018.npz",
+        "calibration/batch-019.npz",
+        "calibration/batch-020.npz",
+        "calibration/batch-021.npz",
+        "calibration/batch-022.npz",
+        "calibration/batch-023.npz",
+        "calibration/batch-024.npz",
+        "calibration/batch-025.npz",
+        "calibration/batch-026.npz",
+        "calibration/batch-027.npz",
+        "calibration/batch-028.npz",
+        "calibration/batch-029.npz",
+        "calibration/batch-030.npz",
+        "calibration/batch-031.npz"
+      ]
+    },
+    "evaluation": {
+      "seed": 12026,
+      "count": 8,
+      "files": [
+        "evaluation/batch-000.npz",
+        "evaluation/batch-001.npz",
+        "evaluation/batch-002.npz",
+        "evaluation/batch-003.npz",
+        "evaluation/batch-004.npz",
+        "evaluation/batch-005.npz",
+        "evaluation/batch-006.npz",
+        "evaluation/batch-007.npz"
+      ]
+    }
+  }
+}

@@ -1,6 +1,20 @@
 """Stream model files without loading tensor payloads."""
 
 import hashlib
+import os
+import time
+
+
+def atomic_replace(source, target):
+    """Windows indexers/readers can briefly hold a deny-delete file handle."""
+    for attempt in range(10):
+        try:
+            os.replace(source, target)
+            return
+        except PermissionError:
+            if os.name != "nt" or attempt == 9:
+                raise
+            time.sleep(0.01 * (attempt + 1))
 
 
 def copy_file(source, target):

@@ -9,6 +9,8 @@ import time
 import uuid
 from pathlib import Path
 
+from .model_files import atomic_replace
+from .process_owner import terminate_process
 from .storage import RunStore
 
 
@@ -42,7 +44,7 @@ class CaptureTasks:
             folder = Path(snapshot["artifact_dir"])
             temporary = folder / "job.tmp"
             temporary.write_text(json.dumps(snapshot), encoding="utf-8")
-            os.replace(temporary, folder / "job.json")
+            atomic_replace(temporary, folder / "job.json")
             RunStore(Path(snapshot["project"])).set_metadata(
                 f"{self.metadata_prefix}:{id}", self.metadata_record(snapshot)
             )
@@ -50,6 +52,9 @@ class CaptureTasks:
 
     def metadata_record(self, snapshot):
         return snapshot
+
+    def poll_progress(self, id, folder):
+        """Optional child progress hook; capture/import behavior stays unchanged."""
 
     def start(self, params):
         if params.get("execute_confirmed") is not True:
@@ -73,7 +78,7 @@ class CaptureTasks:
             if not folder.resolve().is_relative_to(project):
                 raise ValueError("Task artifact directory escapes the project")
             folder.mkdir(parents=True, exist_ok=True)
-            request = {**params, "file_path": str(file_path)}
+            request = {**params, "file_path": str(file_path), "owner_pid": os.getpid()}
             (folder / "request.json").write_text(json.dumps(request), encoding="utf-8")
             self.jobs[id] = {
                 "id": id,
@@ -98,9 +103,10 @@ class CaptureTasks:
             if self.snapshot(id)["state"] in ("COMPLETED", "FAILED", "CANCELLED"):
                 return self.snapshot(id)
             self.cancelled.add(id)
+            (Path(self.jobs[id]["artifact_dir"]) / "cancel.request").touch()
             process = self.processes.get(id)
             if process and process.poll() is None:
-                process.kill()
+                terminate_process(process)
             self.update(id, state="STOPPING")
             return self.snapshot(id)
 
@@ -129,9 +135,19 @@ class CaptureTasks:
                 self.processes[id] = process
                 self.update(id, state="RUNNING")
             try:
-                stdout, stderr = process.communicate(timeout=request.get("timeout", 30))
+                deadline = time.monotonic() + request.get("timeout", 30)
+                while True:
+                    try:
+                        stdout, stderr = process.communicate(timeout=0.2)
+                        break
+                    except subprocess.TimeoutExpired:
+                        self.poll_progress(id, folder)
+                        if time.monotonic() >= deadline:
+                            raise
+                self.poll_progress(id, folder)
             except subprocess.TimeoutExpired:
-                process.kill()
+                (folder / "cancel.request").touch()
+                terminate_process(process)
                 stdout, stderr = process.communicate()
                 (folder / "stdout.log").write_bytes(stdout)
                 (folder / "stderr.log").write_bytes(stderr)
@@ -167,7 +183,7 @@ class CaptureTasks:
             with self.lock:
                 process = self.processes.pop(id, None)
                 if process and process.poll() is None:
-                    process.kill()
+                    terminate_process(process)
                     process.wait(timeout=3)
 
     def shutdown(self):

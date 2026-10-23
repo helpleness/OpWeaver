@@ -64,4 +64,31 @@ JSON Lines 继续作为本地开发 transport；gRPC Worker 可由相同 Go Clie
 | model.load | project/id | 版本化 GraphImportResult，从报告文件读取 |
 | dialog.model | {} | Go 原生模型文件选择器 |
 
-model.task 与 code.task 使用相同的 CREATED/RUNNING/STOPPING/COMPLETED/FAILED/CANCELLED 快照信封，但前端独立路由，不赋值给训练 Job。最多 120s 子进程超时，Go RPC 仅等待启动响应。结果/图和权重放在文件系统，SQLite 存摘要；记录可重开。SourceModelID、Graph ID、origin 和 Source Mapping（适用时）可供 P0-C 消费。此阶段无 ONNX 推理 RPC。
+model.task 与 code.task 使用相同的 CREATED/RUNNING/STOPPING/COMPLETED/FAILED/CANCELLED 快照信封，但前端独立路由，不赋值给训练 Job。最多 120s 导入子进程超时，Go RPC 仅等待启动响应。结果/图和权重放在文件系统，SQLite 存摘要；记录可重开。导入 API 不执行 ONNX 推理；P0-C 使用下述独立 API。
+
+## P0-C API
+
+P1-A 兼容扩展：`lab.backends` 接受可选 project/source_model_id 并返回 environment/passes。`lab.environment.configure`（environment.python_path）与 `lab.environment.probe` 检测独立解释器；`lab.workflow.preview` 验证 config 并返回 generic/native/validated，`lab.workflow.save` 保存模板，`lab.workflow.list` 恢复项目模板。以上均使用现有 Request JSON RPC；环境/工作流写入前验证项目。
+
+OptimizationConfig 新增可选 environment 和 workflow，旧记录缺失字段按默认值恢复。Experiment 新增 workflow_execution，OptimizationResult 新增 workflow。schema_version 仍为 1.0（兼容可选字段扩展）；执行前冻结环境，实际原生配置、Pass footprint、候选和日志随实验保存。没有百分比的 Olive 阶段 progress=null。
+
+| 方法 | 参数 | 结果 |
+|---|---|---|
+| lab.backends | {} | BackendCapability 列表，未实现/依赖缺失不假装可运行 |
+| lab.start | project/config (ExperimentConfig 1.0) | 异步任务；config.mode=baseline 或 optimize |
+| lab.status / lab.stop | id | 实时任务快照 / 杀死实验子进程 |
+| lab.history | project | SQLite 持久化摘要，恢复时将中断任务标 Failed |
+| lab.load | project/id | 完整 Experiment 1.0；含两侧配置、环境、原始计时和验证 |
+| lab.compare | project/reference_id/candidate_id | 两个保存实验的有效 Benchmark、同条件比较或不可比原因 |
+| lab.export | project/id/directory | JSON/Markdown/模型/权重/输入 bundle 的实际路径 |
+| dialog.inputs | {} | 多选 NPZ 文件路径；桌面专用 |
+
+`lab.task` 复用公共子进程快照信封，另含 status、phase、progress、phases、logs 和最终 Experiment result。前端单独路由，避免训练 Job 被替换；轮询 1s 补偿，终结事件去重，迟到项目事件丢弃。Go 校验已保存 project，Python 再校验输入/模型/ID/写入目录和内容 Hash。长任务在独立子进程运行，启动/状态 RPC 不等待整个实验。超时和取消终止子进程，不将 HTTP 断连误当作取消。
+
+## P1-B API / 兼容字段
+
+lab.dataset.create(project, config: DatasetConfig) → 已验证的数据集 manifest/ID；lab.dataset.list(project) → 元数据及引用可用性；lab.dataset.load(project,id) → 校验 manifest 和批次内容后返回元数据。格式 npz-batches-v1，Tensor 始终留在文件系统。数据准备 512 批/1 GiB/45 秒上限，不属于长任务的取消接口；量化运行仍使用 lab.start/status/stop。
+
+OptimizationConfig 可选 calibration_dataset_id；ExperimentConfig.evaluation 包含 dataset_id、allow_calibration_reuse、task/output_name、gates。ValidationResult 扩展 execution_valid/numerical_summary/quality_gate/task_quality；Experiment 扩展 datasets/quantization/preprocessed_artifacts/data_availability，旧 1.0 缺字段恢复默认值。Quality Gate failed 不等于执行 Failed。带标签 Top1 仅支持显式 [batch,classes] 输出；未配置任务不输出 accuracy。
+
+静态量化原生 DataConfig 仅由 Adapter 生成，固定使用受控产品模块；高级通用 JSON 不接受任意 user_script/data_config。lab.load 重新验证引用可用性，缺数据保留历史测量；lab.export 要求引用模型和数据仍完整。

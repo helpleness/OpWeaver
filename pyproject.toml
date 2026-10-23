@@ -7,7 +7,7 @@ name = "opweaver-worker"
 version = "0.1.0"
 description = "Graph IR and isolated PyTorch execution for OpWeaver Studio"
 requires-python = ">=3.10"
-dependencies = ["torch>=2.6,<3", "pydantic>=2.10,<3", "onnx>=1.22,<2"]
+dependencies = ["torch>=2.6,<3", "pydantic>=2.10,<3", "onnx>=1.22,<2", "onnxruntime>=1.24,<2", "numpy>=2,<3"]
 
 [project.optional-dependencies]
 test = ["pytest>=8,<10", "ruff>=0.17,<1"]

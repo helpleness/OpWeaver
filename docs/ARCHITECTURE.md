@@ -1,4 +1,4 @@
-# 架构与实施清单（基线 + P0-A/P0-B）
+# 架构与实施清单（基线 + P0-A/P0-B/P0-C/P1-A）
 
 ## 执行边界
 
@@ -14,6 +14,10 @@ Wails / Go App
                               ├── AST / Codegen / Source Mapping
                               ├── CaptureTasks → disposable FX/Forward child
                               ├── ModelTasks / ImporterRegistry → ONNX / reused FX
+                              ├── OptimizationTasks → disposable ORT CPU experiment
+                              │     ├── Input Manager / Benchmark Engine
+                              │     ├── OptimizationBackend / ORT adapter
+                              │     └── Numerical Validation / Comparison / reports
                               ├── TrainingEngine → PyTorch Eager (CPU/CUDA)
                               ├── RunStore → SQLite metadata/experiments
                               └── artifacts → checkpoint + graph snapshot
@@ -35,12 +39,13 @@ Go 不实现 Tensor、Autograd 或训练计算；GPU 调用全部位于独立 Wo
 | P1 | 核心自动化测试、真实 Worker 集成、桌面/UI 验收 | 见 VALIDATION.md |
 | P0-A | Monaco、源码文件、Graph ↔ Code、Source Mapping、同步/冲突、FX 子进程与 Forward 验证 | 完成 |
 | P0-B | 统一 ONNX/PyTorch 导入、ModelArtifact、模型 Inspector/Diagnostics/子图/持久化 | 完成 |
-| P0-C | ORT 推理、优化/Benchmark | 尚未实现，下一阶段 |
-| 新 P1 / P2 | Olive、NVIDIA、外部插件、子图、Kernel、大模型 | 路线已记录，未实现 |
+| P0-C | ORT CPU 推理、真实优化/数值验证/Benchmark、实验/图比较/导出 | 完成；见 P0C_IMPLEMENTATION.md |
+| P1-A | 独立 Microsoft Olive 环境、真实本地多 Pass 工作流、共享验证与 Benchmark | 完成；见 P1A_IMPLEMENTATION.md |
+| 后续 P1 / P2 | 量化、NVIDIA、外部插件、子图、Kernel、大模型 | 路线已记录，未实现 |
 
 ## 权威数据与同步
 
-Python `ir.py` 是 Design IR 类型源，`source.py` 定义 AnalysisGraph/SourceMapping，`model_artifact.py` 定义 GraphImportResult。生成脚本生成这四者和 TrainingConfig 共五个 JSON Schema，并由 npm run schema 生成 TS。Go 对 Graph 使用 json.RawMessage，避免维护第三份 DTO；保存/加载前 Worker 解析。语义错误允许保存未完成模型，Schema 格式错误拒绝保存，布局独立版本化。
+Python `ir.py` 是 Design IR 类型源，`source.py` 定义 AnalysisGraph/SourceMapping，`model_artifact.py` 定义 GraphImportResult，`lab_types.py` 定义 Experiment。生成脚本生成这些模型和 TrainingConfig 共六个 JSON Schema，并由 npm run schema 生成 TS。Go 对 Graph 使用 json.RawMessage，避免维护第三份 DTO；保存/加载前 Worker 解析。语义错误允许保存未完成模型，Schema 格式错误拒绝保存，布局独立版本化。
 
 Pinia 保存语义图与独立 layout。Vue Flow 节点是由 IR/布局派生的视图，画布临时属性不进入 IR。参数变更触发 250ms 去抖验证；请求带本地修订计数，过期结果不能覆盖新图。连线先本地拒绝自环、重复输入与环路，再由 Worker 验证 Shape/Dtype。训练前强制验证并保存快照。
 
@@ -113,3 +118,11 @@ If/Loop/Scan 属性子图独立提取并链接父节点；外层自由 Tensor �
 结果/请求/日志在文件系统；SQLite metadata 仅存任务/Artifact 摘要，不存整个分析图或权重。model.list/load 恢复，旧进程未终结任务标 FAILED。明确节点/报告/时间限额，无自动 GC。
 
 GraphCanvas 增加外部只读图，原 Design 渲染行为保持不变。>250 节点默认按算子折叠；模块/算子分组是视图投影，搜索可定位原节点，上下游遍历真实边。分析图按视口渲染、缓存布局；选中节点不重新解析模型。Inspector 属性可折叠、权重可检索、宽度可调。自动布局当前为确定性网格，未宣称最优分层布局。
+
+## P1-B 共享数据与有损模型评估
+
+datasets.py 将 NPZ/InputConfig 规范化为有界不可变批次文件和版本化 manifest，跨后端共享；SQLite 存元数据，Tensor 不进前端或 SQLite。Olive DataConfig 使用固定 olive_data.py DataContainer 逐批读取并记录真实消费证据。校准与评估用内容指纹检出重叠，默认要求独立数据。
+
+OnnxStaticQuantization 禁用内部隐式预处理；OnnxQuantizationPreprocess 是显式 Pass，并注册独立 ModelArtifact，形成原模型→预处理→量化 lineage。实验兼容扩展 datasets/evaluation/quantization/preprocessed_artifacts；重开校验数据引用，导出含各阶段模型、NPZ、指纹及实际配置日志。量化 Inspector 只读图中实际结构，不扁平化子图，不推断加速或融合。
+
+lab_validation 区分执行/schema、误差与用户 gate；有损量化不因 allclose 不通过而丢掉产物/Benchmark。TaskEvaluator/ClassificationTop1 使用显式输出及用户标签；未配置就是 not_evaluated。同一个 BenchmarkEngine 用评估首批固定输入及相同 CPU session 条件进行双方测量。详见 P1B_IMPLEMENTATION.md。

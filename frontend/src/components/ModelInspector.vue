@@ -106,6 +106,28 @@ const relatedWarnings = computed(
       </p>
     </div>
     <template v-else>
+      <details
+        v-if="report.quantization?.present"
+        class="model-detail-section"
+        open
+      >
+        <summary>
+          Quantization · {{ report.quantization.representation }}
+        </summary>
+        <p class="muted small">
+          Q {{ report.quantization.quantize_linear }} · DQ
+          {{ report.quantization.dequantize_linear }} · QOperator
+          {{ report.quantization.qoperator_count }} · Integer weights
+          {{ (report.quantization.integer_weights as any[])?.length }}
+        </p>
+        <p class="muted small">{{ report.quantization.scope }}</p>
+        <details>
+          <summary>
+            Integer tensors, scale / zero point & remaining float weights
+          </summary>
+          <pre>{{ JSON.stringify(report.quantization, null, 2) }}</pre>
+        </details>
+      </details>
       <template v-if="node">
         <button class="inspector-back" @click="models.selectedNode = null">
           <ArrowLeft :size="13" />Model overview
@@ -312,6 +334,16 @@ const relatedWarnings = computed(
               {{ report.artifact.sha256 }}
               {{ report.artifact.file_path }}
               Source: {{ report.artifact.source_path }}</code
+            >
+          </details>
+          <details v-if="report.artifact.experiment_id">
+            <summary>Optimization lineage / target</summary>
+            <code class="artifact-identity"
+              >Parent: {{ report.artifact.parent_model_id }} Experiment:
+              {{ report.artifact.experiment_id }}
+              {{
+                JSON.stringify(report.artifact.target_environment, null, 2)
+              }}</code
             >
           </details>
         </details>

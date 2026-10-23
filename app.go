@@ -74,7 +74,7 @@ func (a *App) Request(method, payload string) (string, error) {
 		if !a.desktop {
 			return "", errors.New("native directory dialog is available in the desktop app")
 		}
-		path, err := runtime.OpenDirectoryDialog(a.ctx, runtime.OpenDialogOptions{Title: "Choose parent directory for new project"})
+		path, err := runtime.OpenDirectoryDialog(a.ctx, runtime.OpenDialogOptions{Title: "Choose parent directory"})
 		if err != nil {
 			return "", err
 		}
@@ -106,6 +106,15 @@ func (a *App) Request(method, payload string) (string, error) {
 			return "", err
 		}
 		result = path
+	case "dialog.inputs":
+		if !a.desktop {
+			return "", errors.New("enter NPZ paths in browser mode")
+		}
+		paths, err := runtime.OpenMultipleFilesDialog(a.ctx, runtime.OpenDialogOptions{Title: "Choose named NPZ input samples", Filters: []runtime.FileFilter{{DisplayName: "NumPy named tensors (no pickle)", Pattern: "*.npz"}}})
+		if err != nil {
+			return "", err
+		}
+		result = paths
 	case "workspace.list":
 		files, err := project.ListSources(readString("project"))
 		if err != nil {
@@ -187,6 +196,18 @@ func (a *App) Request(method, payload string) (string, error) {
 		}
 		result = snapshot
 	default:
+		labMethods := map[string]bool{"lab.dataset.create": true, "lab.dataset.list": true, "lab.dataset.load": true, "lab.backends": true, "lab.start": true, "lab.status": true, "lab.stop": true, "lab.history": true, "lab.load": true, "lab.export": true, "lab.compare": true, "lab.environment.configure": true, "lab.environment.probe": true, "lab.workflow.preview": true, "lab.workflow.save": true, "lab.workflow.list": true}
+		if labMethods[method] {
+			if method != "lab.backends" && method != "lab.status" && method != "lab.stop" {
+				snapshot, err := project.Load(readString("project"))
+				if err != nil {
+					return "", err
+				}
+				params["project"], _ = json.Marshal(snapshot.Path)
+			}
+			data, err := a.worker.Call(ctx, method, params)
+			return string(data), err
+		}
 		modelMethods := map[string]bool{"model.importers": true, "model.probe": true, "model.import.start": true, "model.import.status": true, "model.import.stop": true, "model.list": true, "model.load": true}
 		if modelMethods[method] {
 			if method == "model.import.start" || method == "model.list" || method == "model.load" {

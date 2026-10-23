@@ -1,0 +1,11 @@
+# Verified Windows CPU environment, separate from requirements.txt / Worker.
+olive-ai[cpu]==0.13.0
+onnxoptimizer==0.4.2
+onnx==1.23.2
+onnxruntime==1.31.0
+onnxscript==0.7.2
+onnx-ir==1.1.0
+numpy==2.5.4
+pydantic==2.14.1
+# Required by Olive imports; not currently installed by its declared dependencies.
+requests==2.34.2

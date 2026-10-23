@@ -48,6 +48,9 @@ class ModelArtifact(Spec):
     source_path: str
     importer_id: str
     importer_version: str = "1"
+    parent_model_id: str | None = None
+    experiment_id: str | None = None
+    target_environment: dict | None = None
 
 
 class GraphImportResult(Spec):
@@ -64,6 +67,7 @@ class GraphImportResult(Spec):
     diagnostics: list[ModelDiagnostic]
     subgraphs: dict[str, AnalysisGraph] = Field(default_factory=dict)
     pytorch: dict | None = None
+    quantization: dict | None = None
 
 
 OnnxReport = GraphImportResult

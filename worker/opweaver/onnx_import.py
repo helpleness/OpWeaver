@@ -626,7 +626,17 @@ def import_onnx(source, project, folder):
             }
         )
     analysis.diagnostics = normalized
+    quantization = None
+    if any(
+        n.op_type in ("QuantizeLinear", "DequantizeLinear", "QGemm", "MatMulInteger", "ConvInteger")
+        or n.op_type.startswith("QLinear")
+        for n in graph.node
+    ) or any(t.data_type in (TensorProto.INT8, TensorProto.UINT8) for t in graph.initializer):
+        from .quantization_analysis import analyze_quantization
+
+        quantization = analyze_quantization(copied)
     return OnnxReport(
+        quantization=quantization,
         artifact=artifact,
         analysis=analysis,
         model={

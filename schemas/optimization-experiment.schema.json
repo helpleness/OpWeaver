@@ -1,0 +1,1264 @@
+{
+  "$defs": {
+    "BenchmarkConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": "1.0",
+          "default": "1.0",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "warmup": {
+          "default": 10,
+          "maximum": 10000,
+          "minimum": 0,
+          "title": "Warmup",
+          "type": "integer"
+        },
+        "runs": {
+          "default": 100,
+          "maximum": 100000,
+          "minimum": 1,
+          "title": "Runs",
+          "type": "integer"
+        },
+        "batch_size": {
+          "anyOf": [
+            {
+              "maximum": 1000000,
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Batch Size"
+        },
+        "batch_input": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Batch Input"
+        },
+        "intra_op_threads": {
+          "default": 1,
+          "maximum": 128,
+          "minimum": 1,
+          "title": "Intra Op Threads",
+          "type": "integer"
+        },
+        "inter_op_threads": {
+          "default": 1,
+          "maximum": 128,
+          "minimum": 1,
+          "title": "Inter Op Threads",
+          "type": "integer"
+        },
+        "session_optimization": {
+          "default": "disable",
+          "enum": [
+            "disable",
+            "basic",
+            "extended",
+            "all"
+          ],
+          "title": "Session Optimization",
+          "type": "string"
+        },
+        "provider": {
+          "const": "CPUExecutionProvider",
+          "default": "CPUExecutionProvider",
+          "title": "Provider",
+          "type": "string"
+        },
+        "execution_mode": {
+          "const": "sequential",
+          "default": "sequential",
+          "title": "Execution Mode",
+          "type": "string"
+        },
+        "concurrency": {
+          "const": 1,
+          "default": 1,
+          "title": "Concurrency",
+          "type": "integer"
+        }
+      },
+      "title": "BenchmarkConfig",
+      "type": "object"
+    },
+    "BenchmarkResult": {
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": "1.0",
+          "default": "1.0",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "model_id": {
+          "title": "Model Id",
+          "type": "string"
+        },
+        "model_hash": {
+          "title": "Model Hash",
+          "type": "string"
+        },
+        "model_bytes": {
+          "title": "Model Bytes",
+          "type": "integer"
+        },
+        "config": {
+          "$ref": "#/$defs/BenchmarkConfig"
+        },
+        "input_config": {
+          "$ref": "#/$defs/InputConfig"
+        },
+        "session_options": {
+          "additionalProperties": true,
+          "title": "Session Options",
+          "type": "object"
+        },
+        "environment": {
+          "additionalProperties": true,
+          "title": "Environment",
+          "type": "object"
+        },
+        "inputs": {
+          "items": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "title": "Inputs",
+          "type": "array"
+        },
+        "input_digest": {
+          "title": "Input Digest",
+          "type": "string"
+        },
+        "conditions_hash": {
+          "title": "Conditions Hash",
+          "type": "string"
+        },
+        "session_init_ms": {
+          "title": "Session Init Ms",
+          "type": "number"
+        },
+        "warmup_ms": {
+          "title": "Warmup Ms",
+          "type": "number"
+        },
+        "latencies_ms": {
+          "items": {
+            "type": "number"
+          },
+          "title": "Latencies Ms",
+          "type": "array"
+        },
+        "mean_ms": {
+          "title": "Mean Ms",
+          "type": "number"
+        },
+        "p50_ms": {
+          "title": "P50 Ms",
+          "type": "number"
+        },
+        "p95_ms": {
+          "title": "P95 Ms",
+          "type": "number"
+        },
+        "min_ms": {
+          "title": "Min Ms",
+          "type": "number"
+        },
+        "max_ms": {
+          "title": "Max Ms",
+          "type": "number"
+        },
+        "requests_per_second": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Requests Per Second"
+        },
+        "samples_per_second": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Samples Per Second"
+        },
+        "timing_scope": {
+          "default": "Sequential session.run wall time, including runtime output allocation; input preparation and session creation excluded",
+          "title": "Timing Scope",
+          "type": "string"
+        }
+      },
+      "required": [
+        "model_id",
+        "model_hash",
+        "model_bytes",
+        "config",
+        "input_config",
+        "session_options",
+        "environment",
+        "inputs",
+        "input_digest",
+        "conditions_hash",
+        "session_init_ms",
+        "warmup_ms",
+        "latencies_ms",
+        "mean_ms",
+        "p50_ms",
+        "p95_ms",
+        "min_ms",
+        "max_ms",
+        "requests_per_second",
+        "samples_per_second"
+      ],
+      "title": "BenchmarkResult",
+      "type": "object"
+    },
+    "EvaluationConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": "1.0",
+          "default": "1.0",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "dataset_id": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{32}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Dataset Id"
+        },
+        "allow_calibration_reuse": {
+          "default": false,
+          "title": "Allow Calibration Reuse",
+          "type": "boolean"
+        },
+        "task": {
+          "default": "none",
+          "enum": [
+            "none",
+            "classification_top1"
+          ],
+          "title": "Task",
+          "type": "string"
+        },
+        "output_name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Output Name"
+        },
+        "gates": {
+          "$ref": "#/$defs/QualityGates"
+        }
+      },
+      "title": "EvaluationConfig",
+      "type": "object"
+    },
+    "ExperimentConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": "1.0",
+          "default": "1.0",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "mode": {
+          "default": "optimize",
+          "enum": [
+            "baseline",
+            "optimize"
+          ],
+          "title": "Mode",
+          "type": "string"
+        },
+        "source_model_id": {
+          "pattern": "^[0-9a-f]{32}$",
+          "title": "Source Model Id",
+          "type": "string"
+        },
+        "inputs": {
+          "$ref": "#/$defs/InputConfig"
+        },
+        "benchmark": {
+          "$ref": "#/$defs/BenchmarkConfig"
+        },
+        "optimization": {
+          "$ref": "#/$defs/OptimizationConfig"
+        },
+        "validation": {
+          "$ref": "#/$defs/ValidationConfig"
+        },
+        "timeout": {
+          "default": 300,
+          "maximum": 1800,
+          "minimum": 3,
+          "title": "Timeout",
+          "type": "integer"
+        },
+        "evaluation": {
+          "$ref": "#/$defs/EvaluationConfig"
+        }
+      },
+      "required": [
+        "source_model_id"
+      ],
+      "title": "ExperimentConfig",
+      "type": "object"
+    },
+    "InputConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": "1.0",
+          "default": "1.0",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "mode": {
+          "default": "random",
+          "enum": [
+            "random",
+            "npz"
+          ],
+          "title": "Mode",
+          "type": "string"
+        },
+        "shapes": {
+          "additionalProperties": {
+            "items": {
+              "type": "integer"
+            },
+            "type": "array"
+          },
+          "title": "Shapes",
+          "type": "object"
+        },
+        "seed": {
+          "default": 42,
+          "maximum": 4294967295,
+          "minimum": 0,
+          "title": "Seed",
+          "type": "integer"
+        },
+        "files": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 16,
+          "title": "Files",
+          "type": "array"
+        }
+      },
+      "title": "InputConfig",
+      "type": "object"
+    },
+    "ModelArtifact": {
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": "1.0",
+          "default": "1.0",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "format": {
+          "default": "onnx",
+          "enum": [
+            "onnx",
+            "pytorch"
+          ],
+          "title": "Format",
+          "type": "string"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "file_path": {
+          "title": "File Path",
+          "type": "string"
+        },
+        "sha256": {
+          "title": "Sha256",
+          "type": "string"
+        },
+        "file_bytes": {
+          "title": "File Bytes",
+          "type": "integer"
+        },
+        "total_file_bytes": {
+          "title": "Total File Bytes",
+          "type": "integer"
+        },
+        "external_files": {
+          "items": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "title": "External Files",
+          "type": "array"
+        },
+        "imported_at": {
+          "title": "Imported At",
+          "type": "number"
+        },
+        "source_name": {
+          "title": "Source Name",
+          "type": "string"
+        },
+        "source_path": {
+          "title": "Source Path",
+          "type": "string"
+        },
+        "importer_id": {
+          "title": "Importer Id",
+          "type": "string"
+        },
+        "importer_version": {
+          "default": "1",
+          "title": "Importer Version",
+          "type": "string"
+        },
+        "parent_model_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Parent Model Id"
+        },
+        "experiment_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Experiment Id"
+        },
+        "target_environment": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Target Environment"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "file_path",
+        "sha256",
+        "file_bytes",
+        "total_file_bytes",
+        "imported_at",
+        "source_name",
+        "source_path",
+        "importer_id"
+      ],
+      "title": "ModelArtifact",
+      "type": "object"
+    },
+    "OptimizationConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": "1.0",
+          "default": "1.0",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "backend_id": {
+          "default": "onnxruntime.cpu",
+          "title": "Backend Id",
+          "type": "string"
+        },
+        "level": {
+          "default": "extended",
+          "enum": [
+            "disable",
+            "basic",
+            "extended",
+            "all"
+          ],
+          "title": "Level",
+          "type": "string"
+        },
+        "device": {
+          "const": "cpu",
+          "default": "cpu",
+          "title": "Device",
+          "type": "string"
+        },
+        "precision": {
+          "const": "preserve",
+          "default": "preserve",
+          "title": "Precision",
+          "type": "string"
+        },
+        "environment": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/OptimizationEnvironment"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "workflow": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/OptimizationWorkflow"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "calibration_dataset_id": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{32}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Calibration Dataset Id"
+        }
+      },
+      "title": "OptimizationConfig",
+      "type": "object"
+    },
+    "OptimizationEnvironment": {
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": "1.0",
+          "default": "1.0",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "backend_id": {
+          "default": "microsoft.olive",
+          "title": "Backend Id",
+          "type": "string"
+        },
+        "python_path": {
+          "default": "",
+          "title": "Python Path",
+          "type": "string"
+        }
+      },
+      "title": "OptimizationEnvironment",
+      "type": "object"
+    },
+    "OptimizationResult": {
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": "1.0",
+          "default": "1.0",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "artifact": {
+          "$ref": "#/$defs/ModelArtifact"
+        },
+        "backend_id": {
+          "title": "Backend Id",
+          "type": "string"
+        },
+        "backend_version": {
+          "title": "Backend Version",
+          "type": "string"
+        },
+        "config": {
+          "$ref": "#/$defs/OptimizationConfig"
+        },
+        "target_environment": {
+          "additionalProperties": true,
+          "title": "Target Environment",
+          "type": "object"
+        },
+        "duration_ms": {
+          "title": "Duration Ms",
+          "type": "number"
+        },
+        "serialization_options": {
+          "additionalProperties": true,
+          "title": "Serialization Options",
+          "type": "object"
+        },
+        "applied_passes": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Applied Passes"
+        },
+        "note": {
+          "default": "ORT serialized the graph at the selected level. Applied passes are not inferred from the requested level or node count. Target/runtime compatibility must be rechecked elsewhere.",
+          "title": "Note",
+          "type": "string"
+        },
+        "workflow": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Workflow"
+        }
+      },
+      "required": [
+        "artifact",
+        "backend_id",
+        "backend_version",
+        "config",
+        "target_environment",
+        "duration_ms"
+      ],
+      "title": "OptimizationResult",
+      "type": "object"
+    },
+    "OptimizationWorkflow": {
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": "1.0",
+          "default": "1.0",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "id": {
+          "default": "local_workflow",
+          "pattern": "^[A-Za-z][A-Za-z0-9_]{0,63}$",
+          "title": "Id",
+          "type": "string"
+        },
+        "passes": {
+          "items": {
+            "$ref": "#/$defs/WorkflowPass"
+          },
+          "maxItems": 16,
+          "title": "Passes",
+          "type": "array"
+        },
+        "output": {
+          "$ref": "#/$defs/WorkflowOutput"
+        },
+        "log_level": {
+          "default": 1,
+          "maximum": 4,
+          "minimum": 0,
+          "title": "Log Level",
+          "type": "integer"
+        }
+      },
+      "title": "OptimizationWorkflow",
+      "type": "object"
+    },
+    "QualityGates": {
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": "1.0",
+          "default": "1.0",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "max_mean_abs_error": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Max Mean Abs Error"
+        },
+        "max_abs_error": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Max Abs Error"
+        },
+        "max_changed_fraction": {
+          "anyOf": [
+            {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Max Changed Fraction"
+        },
+        "max_accuracy_drop": {
+          "anyOf": [
+            {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Max Accuracy Drop"
+        }
+      },
+      "title": "QualityGates",
+      "type": "object"
+    },
+    "ValidationConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": "1.0",
+          "default": "1.0",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "samples": {
+          "default": 3,
+          "maximum": 16,
+          "minimum": 2,
+          "title": "Samples",
+          "type": "integer"
+        },
+        "atol": {
+          "default": 1e-05,
+          "minimum": 0,
+          "title": "Atol",
+          "type": "number"
+        },
+        "rtol": {
+          "default": 0.0001,
+          "minimum": 0,
+          "title": "Rtol",
+          "type": "number"
+        }
+      },
+      "title": "ValidationConfig",
+      "type": "object"
+    },
+    "ValidationResult": {
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": "1.0",
+          "default": "1.0",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "passed": {
+          "title": "Passed",
+          "type": "boolean"
+        },
+        "samples": {
+          "title": "Samples",
+          "type": "integer"
+        },
+        "atol": {
+          "title": "Atol",
+          "type": "number"
+        },
+        "rtol": {
+          "title": "Rtol",
+          "type": "number"
+        },
+        "outputs": {
+          "items": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "title": "Outputs",
+          "type": "array"
+        },
+        "rule": {
+          "default": "abs(candidate-reference) <= atol + rtol*abs(reference); integers/bools exact; NaN fails, matching signed Inf passes",
+          "title": "Rule",
+          "type": "string"
+        },
+        "scope": {
+          "default": "Numerical consistency on the recorded samples only; not task accuracy or proof of equivalence",
+          "title": "Scope",
+          "type": "string"
+        },
+        "task_quality": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Task Quality"
+        },
+        "execution_valid": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Execution Valid"
+        },
+        "numerical_summary": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Numerical Summary"
+        },
+        "quality_gate": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Quality Gate"
+        }
+      },
+      "required": [
+        "passed",
+        "samples",
+        "atol",
+        "rtol",
+        "outputs"
+      ],
+      "title": "ValidationResult",
+      "type": "object"
+    },
+    "WorkflowOutput": {
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": "1.0",
+          "default": "1.0",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "model_name": {
+          "default": "optimized.onnx",
+          "pattern": "^[A-Za-z0-9_][A-Za-z0-9_.-]{0,80}\\.onnx$",
+          "title": "Model Name",
+          "type": "string"
+        },
+        "save_external_data": {
+          "default": true,
+          "title": "Save External Data",
+          "type": "boolean"
+        },
+        "external_data_threshold": {
+          "default": 1024,
+          "maximum": 1073741824,
+          "minimum": 0,
+          "title": "External Data Threshold",
+          "type": "integer"
+        }
+      },
+      "title": "WorkflowOutput",
+      "type": "object"
+    },
+    "WorkflowPass": {
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": "1.0",
+          "default": "1.0",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "id": {
+          "pattern": "^[A-Za-z][A-Za-z0-9_]{0,63}$",
+          "title": "Id",
+          "type": "string"
+        },
+        "type": {
+          "title": "Type",
+          "type": "string"
+        },
+        "enabled": {
+          "default": true,
+          "title": "Enabled",
+          "type": "boolean"
+        },
+        "parameters": {
+          "additionalProperties": true,
+          "title": "Parameters",
+          "type": "object"
+        }
+      },
+      "required": [
+        "id",
+        "type"
+      ],
+      "title": "WorkflowPass",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "1.0",
+      "default": "1.0",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "id": {
+      "title": "Id",
+      "type": "string"
+    },
+    "source_model_id": {
+      "title": "Source Model Id",
+      "type": "string"
+    },
+    "config": {
+      "$ref": "#/$defs/ExperimentConfig"
+    },
+    "original": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/ModelArtifact"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "optimization": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/OptimizationResult"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "baseline": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/BenchmarkResult"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "optimized": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/BenchmarkResult"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "validation": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/ValidationResult"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "comparison": {
+      "anyOf": [
+        {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Comparison"
+    },
+    "graph_comparison": {
+      "anyOf": [
+        {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Graph Comparison"
+    },
+    "environment": {
+      "additionalProperties": true,
+      "title": "Environment",
+      "type": "object"
+    },
+    "input_samples": {
+      "items": {
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "title": "Input Samples",
+      "type": "array"
+    },
+    "status": {
+      "default": "Pending",
+      "enum": [
+        "Pending",
+        "Validating",
+        "Running",
+        "Succeeded",
+        "Failed",
+        "Cancelled"
+      ],
+      "title": "Status",
+      "type": "string"
+    },
+    "phases": {
+      "additionalProperties": {
+        "type": "string"
+      },
+      "title": "Phases",
+      "type": "object"
+    },
+    "logs": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Logs",
+      "type": "array"
+    },
+    "warnings": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Warnings",
+      "type": "array"
+    },
+    "created_at": {
+      "title": "Created At",
+      "type": "number"
+    },
+    "finished_at": {
+      "anyOf": [
+        {
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Finished At"
+    },
+    "error": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Error"
+    },
+    "success": {
+      "default": false,
+      "title": "Success",
+      "type": "boolean"
+    },
+    "diagnostics": {
+      "items": {
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "title": "Diagnostics",
+      "type": "array"
+    },
+    "workflow_execution": {
+      "anyOf": [
+        {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Workflow Execution"
+    },
+    "datasets": {
+      "anyOf": [
+        {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Datasets"
+    },
+    "quantization": {
+      "anyOf": [
+        {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Quantization"
+    },
+    "data_availability": {
+      "anyOf": [
+        {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Data Availability"
+    },
+    "preprocessed_artifacts": {
+      "items": {
+        "$ref": "#/$defs/ModelArtifact"
+      },
+      "title": "Preprocessed Artifacts",
+      "type": "array"
+    }
+  },
+  "required": [
+    "id",
+    "source_model_id",
+    "config",
+    "created_at"
+  ],
+  "title": "Experiment",
+  "type": "object"
+}

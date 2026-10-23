@@ -2,7 +2,7 @@
 
 **Visual AI Model Engineering IDE** — *Weave Models. Forge Kernels.*
 
-面向模型工程的本地桌面 IDE。当前完成 **P0-A Graph ↔ Code 双向协作** 和 **P0-B 真实模型导入/分析**，保留已有图设计、训练和 Checkpoint 功能。
+面向模型工程的本地桌面 IDE。当前完成 **P0-A Graph ↔ Code 双向协作**、**P0-B 真实模型导入/分析**、**P0-C Optimization Lab CPU 推理优化闭环**、**P1-A Microsoft Olive 本地工作流** 和 **P1-B ONNX 静态量化/数据集/质量评估**，保留已有图设计、训练和 Checkpoint 功能。
 
 客户端：**Wails 2 + Go + Vue 3 + TypeScript + Vue Flow + Pinia + Monaco**。计算：**独立 Python Worker + PyTorch Eager/FX**。CPU 即可完成基础流程，不需要下载数据集。
 
@@ -24,8 +24,9 @@
 - 统一 Model Importer 注册入口：真实 ONNX ModelProto、PyTorch 源码（复用原 FX 捕获），独立 ModelArtifact/Metadata/Diagnostics/GraphImportResult。
 - ONNX IR/Opset、节点/属性/多输出/可选输入、Shape inference、符号/未知维度、Initializer、External Data 原样复制与 Hash；未知算子保留。If/Loop/Scan 属性子图可独立打开，控制流不扁平化。
 - Model Imports 工作区和 Model Inspector：节点搜索定位、上下游高亮、模块/算子分组、展开、视口按需渲染、布局缓存、可调 Inspector、统计/权重/诊断、导入历史和项目重开。
+- Optimization Lab：真实 ORT CPU Baseline → 独立优化模型/外部权重 → 多样本输出数值验证 → 同条件 Benchmark；原始延迟、环境、配置、实验历史、跨实验比较、原图/优化图查看和 JSON/Markdown/模型导出。
 
-**范围边界**：Code-First 当前执行 CPU/eval 捕获与前向，不能直接连接训练系统；Visual Design Graph 保留已有训练。合成训练只接受单个二维 float32 输入/输出；模型构建器支持多输入/多输出。Concat Design 节点有两个输入，不自动支持任意广播或 Python 控制流。捕获结果不等于导出或权重迁移，数值对照只覆盖配置的示例输入。ONNX 图只读，不执行推理，也不还原 PyTorch 源码。P0-C 优化/Benchmark、第三方插件加载 UI、Kernel 和 LLM 尚未实现。
+**范围边界**：Code-First 当前执行 CPU/eval 捕获与前向，不能直接连接训练系统；Visual Design Graph 保留已有训练。合成训练只接受单个二维 float32 输入/输出；模型构建器支持多输入/多输出。Concat Design 节点有两个输入，不自动支持任意广播或 Python 控制流。捕获结果不等于导出或权重迁移，数值对照只覆盖配置的示例输入。ONNX 图只读，不还原 PyTorch 源码；导入阶段仅分析，Optimization Lab 才执行推理。NVIDIA Adapter、剪枝、第三方插件加载 UI、Kernel 和 LLM 尚未实现。
 
 打开/导入 Python 文件只做 AST 检查。点击 **Parse graph** 才在可取消、超时的独立子进程中执行用户代码；它拥有当前用户权限，**不是安全沙箱**。全部模型默认本地处理。
 
@@ -86,7 +87,25 @@
 
 ONNX **Initializer elements 包括常量，不等于可训练参数**；逻辑 Tensor 字节数与实测文件大小分别展示。FLOPs 显示未测量；schema 可识别不代表推理后端支持。外部数据保留相对路径，缺失、越界、目录穿越或逃逸符号链接会明确失败，保留上版有效分析。
 
-当前限制：protobuf 主文件最多 256 MiB（可配合 external weights），全模型最多 20,000 个分析节点，报告最多 24 MiB，任务最长 120s；超过限制明确失败，不发布部分成功图。大型属性数组/字符串只显示带截断标记的摘要，原文件保持完整。PyTorch 导入目前针对独立源码文件，未自动收集多包依赖或序列化权重。完整边界见 [P0-B 实施记录](docs/P0B_IMPLEMENTATION.md)。
+当前导入限制：protobuf 主文件最多 256 MiB（可配合 external weights），全模型最多 20,000 个分析节点，报告最多 24 MiB，导入任务最长 120s；超过限制明确失败，不发布部分成功图。大型属性数组/字符串只显示带截断标记的摘要，原文件保持完整。PyTorch 导入目前针对独立源码文件，未自动收集多包依赖或序列化权重。完整边界见 [P0-B 实施记录](docs/P0B_IMPLEMENTATION.md)。
+
+## Optimization Lab（P0-C / P1-A）
+
+Microsoft Olive 使用单独的 Python 环境，支持 **Olive 0.13.x** 的 `OnnxPeepholeOptimizer`、`OnnxOpVersionConversion`、`OnnxQuantizationPreprocess` 和 `OnnxStaticQuantization`。显式运行 `.\scripts\setup_olive.ps1` 安装后，在 Lab 选择 Microsoft Olive，填写 `.tools\olive-env` 或其 `Scripts\python.exe`，点击 **Save & detect environment**。应用启动不会安装依赖，未配置 Olive 时 ORT CPU 仍可用。
+
+选择 `examples/onnx/redundant-identity.onnx` 导入后，可以添加/排序/禁用 Pass、修改参数、校验和保存工作流、编辑通用高级 JSON、查看生成的 Olive 原生配置，再运行优化。真实输出注册为新 ModelArtifact，复用同一 Validation/Benchmark；实验保存独立环境版本、实际配置、Pass footprint、候选模型、原始日志和观察到的图变化。导出包含工作流文件。操作与约束见 [P1-A 实施记录](docs/P1A_IMPLEMENTATION.md)。
+
+1. 保存项目，在 Model Imports 导入 `examples/onnx/external-cnn.onnx`，进入 **Optimization**。选择已有 ModelArtifact；不会改写模型或 Python 源码。
+2. 将 image 的动态 Shape 明确填为 `[2,3,8,8]`，设置 seed、warmup、timed runs 和线程。需要 samples/s 时填写 Batch=2，并选择 image（验证 axis 0）；未声明 Batch 时仅报告 requests/s。
+3. 点击 **Run baseline only** 获取真实 ORT CPU 推理结果。Session 初始化、warmup 总时间和稳态逐次延迟分别记录。
+4. 选择 ORT artifact 优化级别 Disable/Basic/Extended/All，点击 **Run optimization experiment**。每次实验重新测 baseline，创建独立图和权重，使用相同的多个输入样本检查全部输出，再测优化模型。
+5. 两侧 Benchmark Session 优化级别默认 **disable**，线程、provider、输入一致。Results 显示 Mean/P50/P95/Min/Max、吞吐和文件大小，原始采样曲线来自实测；变慢显示 **Regression**，体积变大显示正的 Size change。
+6. Validation 查看每个样本/输出的 Shape、DType、绝对/相对误差。Graph changes 可打开原有 Graph Canvas/Model Inspector 查看两个模型。History 可重开配置/报告，也可比较不同实验。
+7. **Export model & reports** 选择已有父目录，生成唯一 `opweaver-<id>` 文件夹：完整 JSON/Markdown、原始/优化模型及外部权重、实际输入 NPZ。已存在的同名导出目录拒绝覆盖。
+
+用户数据选择 **User NPZ samples**，每行一个 `.npz` 路径（桌面支持多选）。文件内数组键必须与模型输入名完全一致，Shape/DType 匹配；一个文件是一组多输入样本，优化实验需 2–16 个不同样本文件。用 `numpy.savez('sample-0.npz', x=array_x, y=array_y)` 生成；不加载 pickle。普通浮点、整数和 bool Tensor 可用，未知/动态维度不能自动假设为 1。标量 Shape 为 `[]`。随机输入不保证满足 token/索引/掩码等语义约束。
+
+实验位于 `.opweaver/optimizations/<id>/`，SQLite 保存摘要，优化模型注册回同一 P0-B 模型库，记录 parent ModelArtifact、Experiment 和 CPU/ORT/OS 目标环境。每次实验最多 256 MiB 输入样本、100,000 次计时、1,800s 超时（默认 300s），可终止独立子进程。数值一致性只覆盖这些样本，**不等于任务精度**；没有测量 GPU、并发或内存。All 级别产物可能依赖本机平台。完整架构、复现方法和限制见 [P0-C 实施记录](docs/P0C_IMPLEMENTATION.md)。
 
 ## 自动化验证
 
@@ -105,7 +124,7 @@ cd frontend
 npm run test:e2e
 ```
 
-E2E 覆盖空白建模→训练/恢复、P0-A 双向同步/局部改写/失败保留/鼠标、P0-B 导入/Inspector/搜索/分组/自定义算子/动态维度/子图/外部权重/600 节点/持久化/Python 复用；另检查 960×680 窗口和浏览器运行时错误。实测结果见 [验收记录](docs/VALIDATION.md)。
+E2E 覆盖空白建模→训练/恢复、P0-A 双向同步/局部改写/失败保留/鼠标、P0-B 导入/Inspector/搜索/分组/自定义算子/动态维度/子图/外部权重/600 节点/持久化/Python 复用、P0-C Baseline/优化/多样本验证/图查看/导出/重开/跨实验比较/多输入输出/NPZ；另检查 960×680 窗口和浏览器运行时错误。实测结果见 [验收记录](docs/VALIDATION.md)。
 
 ## 目录
 
@@ -124,3 +143,9 @@ docs/                    架构、协议、扩展、路线和验收说明
 进一步阅读：[架构](docs/ARCHITECTURE.md) · [Graph IR](docs/GRAPH_IR.md) · [Plugin API](docs/PLUGIN_API.md) · [协议](docs/PROTOCOL.md) · [路线](docs/ROADMAP.md) · [Windows/WSL2 开发](docs/DEVELOPMENT.md)。
 
 许可证：[Apache-2.0](LICENSE)。
+
+## P1-B 静态量化与质量评估
+
+真实 Olive OnnxStaticQuantization：MinMax / Entropy / Percentile、QDQ / QOperator、int8 / uint8、每通道及算子过滤。共享 NPZ 数据集支持输入映射、指纹、独立校准/评估；可选带标签 Top1 和用户 Quality Gate，量化误差与执行失败分开。所有输出复用同一 BenchmarkEngine，变慢会如实报告。
+
+导入 examples/quantization/quantization-cnn.onnx，在 Lab 添加静态量化 Pass，按 fixture.json 分别创建 calibration / evaluation 数据集（映射 image → pixels），运行、查看实际整数权重和误差、保存或导出。样例数据是合成测试数据，不代表真实任务精度。完整操作、能力矩阵、实验结果及限制见 [P1-B 实施记录](docs/P1B_IMPLEMENTATION.md)。

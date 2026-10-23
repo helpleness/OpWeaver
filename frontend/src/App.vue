@@ -39,6 +39,8 @@ import ModelWorkbench from "./components/ModelWorkbench.vue";
 import AnalysisInspector from "./components/AnalysisInspector.vue";
 import ModelBrowser from "./components/ModelBrowser.vue";
 import ModelInspector from "./components/ModelInspector.vue";
+import OptimizationLab from "./components/OptimizationLab.vue";
+import { useLab } from "./stores/lab";
 import { useModels } from "./stores/models";
 import { useCode } from "./stores/code";
 import NodeInspector from "./components/NodeInspector.vue";
@@ -48,6 +50,7 @@ import TrainingPanel from "./components/TrainingPanel.vue";
 const editor = useEditor();
 const code = useCode();
 const models = useModels();
+const lab = useLab();
 const modelBrowser = ref<InstanceType<typeof ModelBrowser>>();
 const modelInspectorWidth = ref(340);
 const importedAnalysis = computed(() =>
@@ -226,7 +229,7 @@ async function loadExample(name: string) {
   );
 }
 function askDiscard(action: () => void) {
-  if (editor.running || code.running || models.running) return;
+  if (editor.running || code.running || models.running || lab.running) return;
   if ((editor.dirty || code.dirty) && editor.projectPath) {
     deferredAction = action;
     modal.value = "discard";
@@ -420,7 +423,8 @@ function beforeUnload(event: BeforeUnloadEvent) {
     editor.running ||
     code.dirty ||
     code.running ||
-    models.running
+    models.running ||
+    lab.running
   ) {
     event.preventDefault();
     event.returnValue = "";
@@ -428,7 +432,9 @@ function beforeUnload(event: BeforeUnloadEvent) {
 }
 onMounted(() => {
   unsubscribe = subscribe((event) => {
-    if (event.event === "model.task" && event.data?.id) {
+    if (event.event === "lab.task" && event.data?.id) {
+      void lab.accept(event.data).catch((e) => showError(String(e)));
+    } else if (event.event === "model.task" && event.data?.id) {
       void models.accept(event.data).catch((e) => showError(String(e)));
       if (["COMPLETED", "FAILED", "CANCELLED"].includes(event.data.state))
         log(
@@ -457,6 +463,7 @@ onMounted(() => {
         if (event.data.error) showError(event.data.error);
       }
     } else if (event.event === "worker.exited") {
+      lab.workerExited();
       if (models.running && models.job) {
         models.job.state = "FAILED";
         models.error =
@@ -534,13 +541,25 @@ onUnmounted(() => {
       <div class="project-actions">
         <button
           title="New project"
-          :disabled="busy || editor.running || code.running || models.running"
+          :disabled="
+            busy ||
+            editor.running ||
+            code.running ||
+            models.running ||
+            lab.running
+          "
           @click="showNew()"
         >
           <FilePlus2 :size="15" /><span>New</span></button
         ><button
           title="Open project"
-          :disabled="busy || editor.running || code.running || models.running"
+          :disabled="
+            busy ||
+            editor.running ||
+            code.running ||
+            models.running ||
+            lab.running
+          "
           @click="openProject"
         >
           <FolderOpen :size="15" /><span>Open</span></button
@@ -568,7 +587,11 @@ onUnmounted(() => {
         ><button
           class="subtle"
           :disabled="
-            !ready || busy || editor.running || workspace === 'Model Imports'
+            !ready ||
+            busy ||
+            editor.running ||
+            lab.running ||
+            ['Model Imports', 'Optimization'].includes(workspace)
           "
           @click="runForward"
         >
@@ -591,7 +614,8 @@ onUnmounted(() => {
             busy ||
             code.running ||
             code.readOnly ||
-            workspace === 'Model Imports'
+            lab.running ||
+            ['Model Imports', 'Optimization'].includes(workspace)
           "
           @click="train()"
         >
@@ -615,7 +639,7 @@ onUnmounted(() => {
           <CircleHelp :size="19" />
         </button>
       </nav>
-      <aside class="library">
+      <aside v-show="workspace !== 'Optimization'" class="library">
         <div class="panel-heading">
           <Layers :size="15" /><strong>Component library</strong>
         </div>
@@ -771,9 +795,7 @@ onUnmounted(() => {
           >
             <component :is="item.icon" :size="13" />{{ item.label
             }}<span
-              v-if="
-                ['Optimization', 'Profiler', 'Plugins'].includes(item.label)
-              "
+              v-if="['Profiler', 'Plugins'].includes(item.label)"
               class="later-dot"
             ></span>
           </button>
@@ -796,6 +818,17 @@ onUnmounted(() => {
             ref="modelBrowser"
             :desktop="appInfo?.desktop"
             @open-python="perform(openImportedPython)"
+          /><OptimizationLab
+            v-else-if="workspace === 'Optimization'"
+            :desktop="appInfo?.desktop"
+            @import-model="showModelImport"
+            @view-model="
+              (id) =>
+                perform(async () => {
+                  await models.open(id);
+                  workspace = 'Model Imports';
+                })
+            "
           /><TrainingPanel
             v-else-if="workspace === 'Training'"
             :cuda-available="environment?.cuda_available ?? false"
@@ -844,12 +877,7 @@ onUnmounted(() => {
             </div>
             <span class="eyebrow">COMING LATER</span>
             <h1>{{ workspace }}</h1>
-            <p v-if="workspace === 'Optimization'">
-              Versioned passes, capability checks and numerical validation form
-              the extension boundary. Export, quantization and backend
-              compilation are planned for P3.
-            </p>
-            <p v-else-if="workspace === 'Profiler'">
+            <p v-if="workspace === 'Profiler'">
               Kernel timelines, memory analysis and measured backend comparisons
               are planned for P3–P4. No profiling results have been generated.
             </p>
@@ -864,7 +892,7 @@ onUnmounted(() => {
             </div>
           </div>
         </div>
-        <section class="bottom-panel">
+        <section v-show="workspace !== 'Optimization'" class="bottom-panel">
           <div class="bottom-tabs">
             <button
               v-for="tab in [

@@ -1,6 +1,6 @@
 # 分阶段路线
 
-按 2026-10-23 修订任务书重新编号。旧版 P0/P1 是已有可运行基线，不等于本任务书的全部 P0 已完成。本轮按最终指令先完成 P0-A，保留原架构和训练功能。
+按 2026-10-23 修订任务书重新编号。旧版 P0/P1 是已有可运行基线；现在已增量完成 P0-A、P0-B 和 P0-C，保留原架构和训练功能。
 
 ## 已有基线
 
@@ -29,16 +29,25 @@ Wails/Go/Vue/Pinia/Vue Flow，Design Graph 1.0，Eager 模型、Autograd、合�
 6. 属性子图及外层捕获、多输出、搜索、高亮、分组/展开、600 节点回归、异步导入和持久化。
 7. 离线模型与任务书 A–G 验证，详情见 VALIDATION.md。
 
-## P0-C — ONNX CPU 优化闭环，尚未实现
+## P0-C — ONNX CPU 优化闭环，已完成
 
 1. ONNX Runtime CPU Execution Provider，真实配置输入及推理。
 2. Optimization Adapter：Probe/Capabilities/Validate/Optimize/Progress/Result；Artifact、任务、配置、报告均有版本与 lineage。
 3. Baseline → ORT graph optimization → 固定输入数值校验 → Optimized Benchmark → 比较/导出。
 4. 同条件 warmup/次数/Batch/Shape，记录逐次耗时、均值/P50/P95/吞吐、模型大小和环境。
 5. 输出 Shape/Dtype、atol/rtol、最大/平均绝对误差；失败或变慢如实报告，原模型不覆盖。
-6. 离线测试 F，无 GPU 也可完成；此阶段之前不创建假 Optimization Lab。
+6. 多输入多输出、随机/用户 NPZ、2–16 样本容差/精确比较、取消/超时/崩溃恢复、持久化和导出，离线测试与桌面构建。
+7. 真实 ORT CPU 已接入；Olive/NVIDIA 显示未实现且不可执行。没有量化、剪枝、任务级精度或 GPU Benchmark。
 
-## P1 — Microsoft Olive 和训练泛化
+## P1-A — Microsoft Olive，已完成
+
+独立环境及状态/版本/依赖检测，真实 Olive 0.13.x 本地 CPU workflow，Peephole/OpVersionConversion 两个 Pass、顺序/参数/禁用/高级配置/模板，实际候选/footprint/原始日志、通用 ModelArtifact/Validation/Benchmark/实验导出。详见 P1A_IMPLEMENTATION.md 和 VALIDATION.md。没有把 Transformer、量化、GPU 或云端 Olive 标记为完成。
+
+## P1-B — ONNX 静态量化，已完成
+
+真实 Olive OnnxStaticQuantization / 独立预处理、共享 NPZ/合成输入数据集、输入映射/内容指纹/角色与独立评估、INT8 数值误差与可选质量阈值、带标签 Top1、同条件 CPU Benchmark、实际 QDQ/QOperator/整数权重 Inspector、各阶段 Artifact lineage、导出/重开与原生验收。详见 P1B_IMPLEMENTATION.md；不将合成样例称为业务精度验证。
+
+## 后续 P1 — 任务评价和训练泛化
 
 Olive 可选 Adapter，检测依赖/能力并调用真实工具，不重实现算法。Dataset/DataLoader、输入/target 映射、validation split、Scheduler、可恢复 sampler、训练插件。增量事件 sequence、分页指标、日志轮转、幂等启动、Artifact 重定位、历史图恢复。
 

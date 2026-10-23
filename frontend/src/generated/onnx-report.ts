@@ -23,6 +23,11 @@ export type SourceName = string;
 export type SourcePath = string;
 export type ImporterId = string;
 export type ImporterVersion = string;
+export type ParentModelId = string | null;
+export type ExperimentId = string | null;
+export type TargetEnvironment = {
+  [k: string]: unknown;
+} | null;
 export type SchemaVersion2 = "1.0";
 export type Origin = "pytorch.fx" | "onnx";
 export type Id1 = string;
@@ -80,6 +85,9 @@ export type Diagnostics1 = ModelDiagnostic[];
 export type Pytorch = {
   [k: string]: unknown;
 } | null;
+export type Quantization = {
+  [k: string]: unknown;
+} | null;
 
 export interface GraphImportResult {
   schema_version?: SchemaVersion;
@@ -95,6 +103,7 @@ export interface GraphImportResult {
   diagnostics: Diagnostics1;
   subgraphs?: Subgraphs;
   pytorch?: Pytorch;
+  quantization?: Quantization;
 }
 export interface ModelArtifact {
   schema_version?: SchemaVersion1;
@@ -111,6 +120,9 @@ export interface ModelArtifact {
   source_path: SourcePath;
   importer_id: ImporterId;
   importer_version?: ImporterVersion;
+  parent_model_id?: ParentModelId;
+  experiment_id?: ExperimentId;
+  target_environment?: TargetEnvironment;
 }
 export interface AnalysisGraph {
   schema_version?: SchemaVersion2;

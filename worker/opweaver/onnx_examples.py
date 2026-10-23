@@ -142,6 +142,19 @@ def conditional():
     )
 
 
+def multi_input_output():
+    return model(
+        [
+            h.make_node("Add", ["x", "y"], ["sum"], name="add"),
+            h.make_node("Mul", ["x", "y"], ["product"], name="multiply"),
+            h.make_node("Greater", ["x", "y"], ["greater"], name="compare"),
+        ],
+        [value("x", ["B", 4]), value("y", ["B", 4])],
+        [value("sum", ["B", 4]), value("product", ["B", 4]), value("greater", ["B", 4], T.BOOL)],
+        name="Multi input / output",
+    )
+
+
 def large_chain(count=600):
     return model(
         [
@@ -159,6 +172,19 @@ def large_chain(count=600):
     )
 
 
+def redundant_identity():
+    return model(
+        [
+            h.make_node("Identity", ["x"], ["a"], name="redundant/first"),
+            h.make_node("Identity", ["a"], ["b"], name="redundant/second"),
+            h.make_node("Relu", ["b"], ["y"], name="activation"),
+        ],
+        [value("x", [2, 4])],
+        [value("y", [2, 4])],
+        name="Olive Identity elimination",
+    )
+
+
 def generate_examples(directory):
     directory = Path(directory)
     directory.mkdir(parents=True, exist_ok=True)
@@ -169,7 +195,9 @@ def generate_examples(directory):
         ("custom", custom),
         ("multi-output", multi_output),
         ("conditional", conditional),
+        ("multi-input-output", multi_input_output),
         ("large-chain", large_chain),
+        ("redundant-identity", redundant_identity),
     ]:
         onnx.save_model(factory(), directory / f"{name}.onnx")
     external = directory / "weights.bin"

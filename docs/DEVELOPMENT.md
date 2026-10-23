@@ -31,7 +31,7 @@ wails dev
 .\scripts\build.ps1
 ```
 
-输出 `build/bin/OpWeaverStudio.exe`，前端静态资源嵌入 exe；同目录复制 worker 源码、examples、pyproject、许可证。目标电脑仍需 PyTorch/Pydantic。可在分发目录执行 `python -m venv .venv`，安装 CPU torch 后 `pip install .`。也可指向独立 OPWEAVER_PYTHON。
+输出 `build/bin/OpWeaverStudio.exe`，前端静态资源嵌入 exe；同目录复制 worker 源码、examples、pyproject、许可证。目标电脑仍需 Python/PyTorch/Pydantic/ONNX/ONNX Runtime CPU/NumPy（版本约束见 pyproject.toml）。可在分发目录执行 `python -m venv .venv`，安装 CPU torch 后 `pip install .`。也可指向独立 OPWEAVER_PYTHON。P0-C 本机实测 ONNX Runtime 1.31.0，不要求 CUDA；依赖不可用时 Lab 如实显示 unavailable。
 
 没有自动打包 Python、没有代码签名、没有 Windows installer。`build/windows/` 保存 Wails 的应用元信息、manifest 和图标源。运行中的 exe 在 Windows 下不能覆盖，重建前关闭测试应用。
 
@@ -120,7 +120,13 @@ Linux 原生 Wails 桌面还需要 GTK/WebKit2GTK/GCC 等系统依赖，参阅 [
 
 前端 `package-lock.json` 和 `go.sum` 已锁定解析结果；Python 用 pyproject 兼容范围，`requirements-tested.txt` 记录本轮 CPU 可安装的版本组合。CUDA wheel 根据宿主驱动单独选择。精确恢复测试在同一 CPU/PyTorch 环境比对权重；不同版本或不同设备不承诺 bitwise 相同。
 
-## P0-B 开发入口
+## P1-A 独立 Olive 环境
+
+显式执行 `scripts/setup_olive.ps1`；它创建独立 `.tools/olive-env`，不会装进 Worker，也不会被应用启动流程调用。环境的 `Scripts/python.exe` 配到 Lab 的 Microsoft Olive 面板；安装锁定见 requirements-olive.txt，完整依赖记录在环境 installed-requirements.txt。当前 0.13.x API，实际验证 0.13.0，本地 ONNX/CPU 两个 Pass。扩展点和限制见 [P1-A](P1A_IMPLEMENTATION.md)。
+
+`OPWEAVER_OLIVE_PYTHON` 可覆盖自动化测试的独立解释器路径（Python/Playwright 也接受 venv 目录）；Go 集成测试请传 python.exe 文件。未安装独立环境时真实 Olive 自动化用例会跳过，ORT 和其他回归照常运行；发布验收必须安装并确认没有跳过。`scripts/verify_olive.py <新验收目录> <Olive环境>` 是离线 CLI 冒烟脚本，不代替桌面验收。`scripts/test.ps1` 仍运行全部 Python/前端/Go，`npm run test:e2e` 通过本地 --serve 启动的应用 HTTP 适配器执行真实工作流。
+
+## P0-B 导入模块（历史入口）
 
 依赖 ONNX >=1.22,<2，本机实测 1.22.0；bootstrap 的 pip install -e '.[test]' 安装。CPU 即可解析，未引入 ONNX Runtime。新机器须用同一个 OPWEAVER_PYTHON 安装依赖，不能仅替换 exe。
 
@@ -133,3 +139,7 @@ $env:PYTHONPATH = 'worker'
 ```
 
 报告在 .opweaver/imports/<id>/result.json，日志同目录，复制件和外部权重在 model/；PyTorch 副本在项目 src，可回到已有编辑器。类型生成现有五组，不手改 generated。Go App→Worker→ONNX 子进程也有真实测试，test.ps1 用 -count=1 避免 Go 缓存忽略 Python 文件修改。
+
+## P1-B 开发与验收
+
+执行 scripts/generate_quantization_examples.py 生成合成 CNN / 32 批校准 / 8 批独立评估 NPZ；fixture.json 使用相对路径，映射 image → pixels。worker/tests/test_quantization.py 实跑 MinMax/Percentile/Entropy、QDQ/QOperator、显式预处理导出和 lineage、共享数据校验/重叠/缺失、Top1 和质量 gate；不向 Worker 安装 Olive。scripts/test.ps1 含 Go 真实静态量化 API 集成；frontend E2E 含完整 NPZ→量化→导出→重载→Inspector。详细限制见 P1B_IMPLEMENTATION.md。
