@@ -88,6 +88,24 @@ func (a *App) Request(method, payload string) (string, error) {
 			return "", err
 		}
 		result = path
+	case "dialog.onnx":
+		if !a.desktop {
+			return "", errors.New("enter an ONNX model path in browser mode")
+		}
+		path, err := runtime.OpenFileDialog(a.ctx, runtime.OpenDialogOptions{Title: "Import ONNX model", Filters: []runtime.FileFilter{{DisplayName: "ONNX model", Pattern: "*.onnx"}}})
+		if err != nil {
+			return "", err
+		}
+		result = path
+	case "dialog.model":
+		if !a.desktop {
+			return "", errors.New("enter a model source path in browser mode")
+		}
+		path, err := runtime.OpenFileDialog(a.ctx, runtime.OpenDialogOptions{Title: "Import model", Filters: []runtime.FileFilter{{DisplayName: "Registered model formats", Pattern: "*.onnx;*.py"}}})
+		if err != nil {
+			return "", err
+		}
+		result = path
 	case "workspace.list":
 		files, err := project.ListSources(readString("project"))
 		if err != nil {
@@ -169,6 +187,32 @@ func (a *App) Request(method, payload string) (string, error) {
 		}
 		result = snapshot
 	default:
+		modelMethods := map[string]bool{"model.importers": true, "model.probe": true, "model.import.start": true, "model.import.status": true, "model.import.stop": true, "model.list": true, "model.load": true}
+		if modelMethods[method] {
+			if method == "model.import.start" || method == "model.list" || method == "model.load" {
+				snapshot, err := project.Load(readString("project"))
+				if err != nil {
+					return "", err
+				}
+				params["project"], _ = json.Marshal(snapshot.Path)
+			}
+			if method == "model.import.start" {
+				path, err := filepath.Abs(readString("source"))
+				if err != nil {
+					return "", err
+				}
+				info, err := os.Stat(path)
+				if err != nil {
+					return "", err
+				}
+				if info.IsDir() {
+					return "", errors.New("select a model file")
+				}
+				params["source"], _ = json.Marshal(path)
+			}
+			data, err := a.worker.Call(ctx, method, params)
+			return string(data), err
+		}
 		codeMethods := map[string]bool{"code.inspect": true, "code.generate": true, "code.patch": true, "code.capture.start": true, "code.capture.status": true, "code.capture.stop": true}
 		if codeMethods[method] {
 			if method == "code.capture.start" {

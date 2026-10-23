@@ -74,7 +74,7 @@ npm run schema
 npm run build
 ```
 
-不要手工编辑 generated 下的四组类型。修改 Design IR、AnalysisGraph、SourceMapping 或 TrainingConfig 后一并生成 Schema/类型。Python 测试验证 Schema 没有漂移。
+不要手工编辑 generated 下的五组类型。修改 Design IR、AnalysisGraph、SourceMapping、GraphImportResult 或 TrainingConfig 后一并生成 Schema/类型。Python 测试验证 Schema 没有漂移。
 
 ## P0-A 开发入口
 
@@ -119,3 +119,17 @@ Linux 原生 Wails 桌面还需要 GTK/WebKit2GTK/GCC 等系统依赖，参阅 [
 ## 版本与可重复性
 
 前端 `package-lock.json` 和 `go.sum` 已锁定解析结果；Python 用 pyproject 兼容范围，`requirements-tested.txt` 记录本轮 CPU 可安装的版本组合。CUDA wheel 根据宿主驱动单独选择。精确恢复测试在同一 CPU/PyTorch 环境比对权重；不同版本或不同设备不承诺 bitwise 相同。
+
+## P0-B 开发入口
+
+依赖 ONNX >=1.22,<2，本机实测 1.22.0；bootstrap 的 pip install -e '.[test]' 安装。CPU 即可解析，未引入 ONNX Runtime。新机器须用同一个 OPWEAVER_PYTHON 安装依赖，不能仅替换 exe。
+
+importers.py 注册格式，model_artifact.py 定义报告，onnx_import.py 提取真实结构，model_tasks.py 复用调度，model_files.py 流式复制，import_runner.py 执行。ModelBrowser/ModelInspector/useModels 复用 GraphCanvas，analysis-view 只做视图分组/关系遍历。
+
+```powershell
+$env:PYTHONPATH = 'worker'
+.\.venv\Scripts\python.exe scripts/generate_onnx_examples.py
+.\.venv\Scripts\python.exe -m pytest worker/tests/test_import.py -q
+```
+
+报告在 .opweaver/imports/<id>/result.json，日志同目录，复制件和外部权重在 model/；PyTorch 副本在项目 src，可回到已有编辑器。类型生成现有五组，不手改 generated。Go App→Worker→ONNX 子进程也有真实测试，test.ps1 用 -count=1 避免 Go 缓存忽略 Python 文件修改。

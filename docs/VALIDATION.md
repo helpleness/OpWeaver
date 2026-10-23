@@ -1,4 +1,36 @@
-# 验收记录：P0-A 与已有基线
+# 验收记录：P0-B、P0-A 与已有基线
+
+## P0-B 最终自动验收（2026-10-23，UTC+8）
+
+| 检查 | 结果 |
+|---|---|
+| Pytest | **66 passed**，含新增 17 项模型导入验证和原 P0-A/训练测试 |
+| Vitest | **17 passed**，含分组/方向遍历、失败保留、过期项目事件隔离 |
+| Go `OPWEAVER_INTEGRATION=1 go test -count=1 -v ./...` | **9 passed / 3 packages**，含 App→真实 Worker→ONNX 子进程导入/加载/路径拒绝 |
+| Ruff check / format、go vet | **通过** |
+| vue-tsc + Vite production | **通过**，Monaco 体积警告仍存在，无构建错误 |
+| Playwright，最终桌面 exe 的内嵌生产资源 | **7 passed，约 1.1 分钟** |
+| Wails 2.17.0 Windows amd64 / scripts/build.ps1 | **通过**，复制最新 Worker 和全部离线模型 |
+| npm audit | **0 vulnerabilities** |
+
+新增 ONNX 1.22.0。CPU 完成全部 P0-B 测试，无 ONNX Runtime/CUDA 依赖。外部权重只读元数据/流式复制，不把 Tensor 内容写到前端或 SQLite。
+
+任务书 A–G 的实际覆盖：
+
+- A：离线 CNN Conv/Relu/MaxPool/Flatten/Gemm，5 个算子、11 个可视节点、10 条边；输出 `[B,3]`，Pool `[B,2,3,3]`。4 个 Initializer、113 元素、452 逻辑字节，源文件 Hash/复制件字节一致。
+- B：Identity 分支和 Add 汇合，验证 Add 两个真实生产者，重复操作数和多输出 Split 的 out_1 端口不误连，省略输入不产生假边。
+- C：`[B,None,4]` 保留符号与未知维度；UI `[B,?,4]`，不填入假定 batch/维度。
+- D：com.example::Fancy 和未知标准算子保留属性/Domain/边，显示 UNKNOWN_OPERATOR。Checker 完整性和执行支持分开，不伪称已做推理。
+- E：损坏 protobuf、缺 external data、路径穿越、越界字节范围、未定义输入结构均失败。UI 显示错误并保留上一有效图，主 Worker 可继续导入。
+- F：P0-A Visual 往返、ReLU→GELU、精确源码局部修改、失败保留、鼠标回归继续通过；原空白图手工连线→Forward→训练→重开→Resume 和 960×680 检查继续通过。统一 PyTorch Importer 复用 FX，Open Python 回到 Monaco/映射。
+- G：导入后重载，Artifact/报告/源 Hash/历史均保留；原模型未修改。SQLite 仅保留任务/Artifact 摘要，报告和权重为独立文件。
+- If 两个独立子图及外层 x 捕获、真实 external-cnn+weights.bin、600 节点模型自动折为 3 组并可搜索最后节点；重新加载大模型仍默认分组。所有 7 条 E2E 检查 pageerror 或原有错误断言。
+
+曾修复：子图名称被输出 Tensor 局部变量覆盖；分析图视口渲染误影响 Design Graph 的节点 DOM；PyTorch 算子数误包含输入/输出；重开大图时分组监听未立即执行。增加/保留对应验收，未通过放宽测试掩盖。
+
+截图：`test-results/p0b-model-inspector.png`。限制：256 MiB protobuf / 20,000 分析节点 / 24 MiB 报告 / 120s 超时；确定性网格布局、会话布局缓存，属性有明确摘要上限。ONNX 子图只读，Python 独立源码未自动打包依赖/权重；没有 ONNX 推理、优化、Benchmark 或无损 Python 重建。
+
+以下 P0-A 结果为上阶段记录，当前 P0-B 结果以上表为准。
 
 日期：**2026-10-23（UTC+8）**。以下结果来自本轮真实执行，不是预设示例指标。
 
@@ -126,3 +158,9 @@ GitHub Actions CPU CI 已提交配置，但没有推送仓库或声称远程 CI 
 - Checkpoint 恢复要求完整 IR 一致；没有 UI 一键还原历史图。跨设备/版本不保证 bitwise 一致。
 - PyTorch/Python 未打包进 exe；第三方插件无沙箱和加载 UI。
 - 没有把原生关闭过程、磁盘断电或任意恶意插件当作已完全验证的场景。
+
+### P0-B 原生桌面实测
+
+实际在新 Wails/WebView2 窗口通过 Project Explorer 的 Import model 选择 external-cnn.onnx，使用注册表探测格式并导入。Inspector 显示 Tiny CNN、5 算子、4 Initializer/113 元素、452 逻辑字节、weights.bin；主文件 749 B、合计 1201 B。Checker passed，ONNX 未执行推理，源 Hash 与原文件一致。
+
+关闭并重新启动桌面，原 30 epochs 训练记录、Synced 设计图和 Tiny CNN Artifact 均保留；从 Explorer 再次打开已存分析。此前模型/代码均为 All changes saved。浏览器自动测试另验证节点属性、搜索/分组/子图/大图重载和完整训练恢复；没有宣称覆盖所有 DPI/输入法/大规模 LLM。

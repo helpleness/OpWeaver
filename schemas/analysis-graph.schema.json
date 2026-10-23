@@ -47,6 +47,11 @@
           "additionalProperties": true,
           "title": "Tensors",
           "type": "object"
+        },
+        "details": {
+          "additionalProperties": true,
+          "title": "Details",
+          "type": "object"
         }
       },
       "required": [
@@ -121,6 +126,18 @@
     "source_hash": {
       "title": "Source Hash",
       "type": "string"
+    },
+    "source_model_id": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Source Model Id"
     },
     "nodes": {
       "items": {

@@ -51,3 +51,17 @@ Checkpoint 路径是本地文件引用，不传 Tensor 字节。当前路径必�
 计划服务：Environment/GetCapabilities、Graph/Validate、Job/Start/Get/Cancel/Watch、Artifact/Resolve。新增客户端 session、幂等 request key、事件 sequence/resume token、结构化错误 code/locations、能力协商、TLS/认证与远程取消确认。保留 GraphIR JSON payload + schema version，或生成同源 Protobuf schema，避免同时手工维护三套 Graph DTO。
 
 JSON Lines 继续作为本地开发 transport；gRPC Worker 可由相同 Go Client 接口适配。首版没有提供不可运行的 proto stub。
+
+## P0-B API
+
+| 方法 | 参数 | 结果 |
+|---|---|---|
+| model.importers | {} | 已注册格式、版本、扩展名、可用性、是否执行 Python |
+| model.probe | source | 格式识别；Python 使用原 AST 静态入口发现 |
+| model.import.start | project/source/timeout；Python 另需 entry/constructor/inputs/execute_confirmed | 异步 ModelJob |
+| model.import.status / stop | id | 任务快照 / 请求终止 |
+| model.list | project | SQLite 中的任务及 Artifact 摘要 |
+| model.load | project/id | 版本化 GraphImportResult，从报告文件读取 |
+| dialog.model | {} | Go 原生模型文件选择器 |
+
+model.task 与 code.task 使用相同的 CREATED/RUNNING/STOPPING/COMPLETED/FAILED/CANCELLED 快照信封，但前端独立路由，不赋值给训练 Job。最多 120s 子进程超时，Go RPC 仅等待启动响应。结果/图和权重放在文件系统，SQLite 存摘要；记录可重开。SourceModelID、Graph ID、origin 和 Source Mapping（适用时）可供 P0-C 消费。此阶段无 ONNX 推理 RPC。

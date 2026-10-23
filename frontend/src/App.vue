@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref } from "vue";
+import { computed, nextTick, onMounted, onUnmounted, ref } from "vue";
 import {
   Activity,
   ArrowRight,
@@ -37,6 +37,9 @@ import type { Job, Operator } from "./types";
 import { emptyGraph, useEditor } from "./stores/editor";
 import ModelWorkbench from "./components/ModelWorkbench.vue";
 import AnalysisInspector from "./components/AnalysisInspector.vue";
+import ModelBrowser from "./components/ModelBrowser.vue";
+import ModelInspector from "./components/ModelInspector.vue";
+import { useModels } from "./stores/models";
 import { useCode } from "./stores/code";
 import NodeInspector from "./components/NodeInspector.vue";
 import LossChart from "./components/LossChart.vue";
@@ -44,6 +47,47 @@ import TrainingPanel from "./components/TrainingPanel.vue";
 
 const editor = useEditor();
 const code = useCode();
+const models = useModels();
+const modelBrowser = ref<InstanceType<typeof ModelBrowser>>();
+const modelInspectorWidth = ref(340);
+const importedAnalysis = computed(() =>
+  models.subgraphKey
+    ? models.report?.subgraphs[models.subgraphKey]
+    : models.report?.analysis,
+);
+const resizingModelInspector = ref(false);
+function resizeModelInspector(event: PointerEvent) {
+  if (resizingModelInspector.value)
+    modelInspectorWidth.value = Math.max(
+      280,
+      Math.min(560, window.innerWidth - event.clientX),
+    );
+}
+function showModelImport() {
+  workspace.value = "Model Imports";
+  void nextTick(() => modelBrowser.value?.showImport());
+}
+async function openImportedPython() {
+  const report = models.report;
+  if (!report?.pytorch) return;
+  code.mode = "code-first";
+  code.view = "split";
+  await code.refreshFiles();
+  await code.open(report.artifact.file_path);
+  code.entry = report.model.entry;
+  code.constructor = JSON.stringify(
+    (report.pytorch.capture as any).constructor ?? {},
+  );
+  code.inputConfig = JSON.stringify(
+    (report.pytorch.capture as any).input_specs,
+  );
+  code.lastResult = report.pytorch;
+  code.parsedHash = report.artifact.sha256;
+  code.status = "read_only";
+  workspace.value = "Model Graph";
+  if (models.selectedNode) await code.locateNode(models.selectedNode);
+  await code.persist();
+}
 const inspectorVisible = ref(true);
 const workspace = ref("Model Graph");
 const bottomTab = ref("Training Metrics");
@@ -71,6 +115,7 @@ let polling = false;
 
 const workspaces = [
   { label: "Model Graph", icon: Workflow },
+  { label: "Model Imports", icon: Box },
   { label: "Dataset", icon: Database },
   { label: "Training", icon: Activity },
   { label: "Optimization", icon: Zap },
@@ -106,12 +151,18 @@ const problemIssues = computed<
     line?: number;
   }[]
 >(() =>
-  code.readOnly
-    ? code.diagnostics
-    : [...editor.validation.issues, ...code.diagnostics],
+  workspace.value === "Model Imports"
+    ? (models.report?.diagnostics ?? [])
+    : code.readOnly
+      ? code.diagnostics
+      : [...editor.validation.issues, ...code.diagnostics],
 );
 const problemCount = computed(() => problemIssues.value.length);
 function locateProblem(issue: { node?: string; line?: number }) {
+  if (workspace.value === "Model Imports" && issue.node) {
+    models.selectedNode = issue.node;
+    return;
+  }
   if (code.readOnly && issue.node)
     void code.locateNode(issue.node).catch((e) => showError(String(e)));
   else if (issue.line) {
@@ -175,7 +226,7 @@ async function loadExample(name: string) {
   );
 }
 function askDiscard(action: () => void) {
-  if (editor.running || code.running) return;
+  if (editor.running || code.running || models.running) return;
   if ((editor.dirty || code.dirty) && editor.projectPath) {
     deferredAction = action;
     modal.value = "discard";
@@ -264,6 +315,12 @@ function add(op: Operator) {
   });
 }
 async function runForward() {
+  if (workspace.value === "Model Imports") {
+    showError(
+      "ONNX inference is part of P0-C. This workspace inspects structure; use the Python source workspace for PyTorch forward.",
+    );
+    return;
+  }
   if (
     code.activeFile &&
     workspace.value === "Model Graph" &&
@@ -358,14 +415,26 @@ function keydown(event: KeyboardEvent) {
   }
 }
 function beforeUnload(event: BeforeUnloadEvent) {
-  if (editor.dirty || editor.running || code.dirty || code.running) {
+  if (
+    editor.dirty ||
+    editor.running ||
+    code.dirty ||
+    code.running ||
+    models.running
+  ) {
     event.preventDefault();
     event.returnValue = "";
   }
 }
 onMounted(() => {
   unsubscribe = subscribe((event) => {
-    if (event.event === "code.task" && event.data?.id) {
+    if (event.event === "model.task" && event.data?.id) {
+      void models.accept(event.data).catch((e) => showError(String(e)));
+      if (["COMPLETED", "FAILED", "CANCELLED"].includes(event.data.state))
+        log(
+          `Model import ${event.data.state.toLowerCase()} · ${event.data.id.slice(0, 8)}${event.data.error ? ": " + event.data.error : ""}`,
+        );
+    } else if (event.event === "code.task" && event.data?.id) {
       void code
         .acceptJob(event.data)
         .then(() => {
@@ -388,6 +457,11 @@ onMounted(() => {
         if (event.data.error) showError(event.data.error);
       }
     } else if (event.event === "worker.exited") {
+      if (models.running && models.job) {
+        models.job.state = "FAILED";
+        models.error =
+          "Model import worker exited. Previous valid artifacts retained.";
+      }
       if (code.running && code.captureJob) {
         code.captureJob.state = "FAILED";
         code.status = "parse_failed";
@@ -460,13 +534,13 @@ onUnmounted(() => {
       <div class="project-actions">
         <button
           title="New project"
-          :disabled="busy || editor.running || code.running"
+          :disabled="busy || editor.running || code.running || models.running"
           @click="showNew()"
         >
           <FilePlus2 :size="15" /><span>New</span></button
         ><button
           title="Open project"
-          :disabled="busy || editor.running || code.running"
+          :disabled="busy || editor.running || code.running || models.running"
           @click="openProject"
         >
           <FolderOpen :size="15" /><span>Open</span></button
@@ -493,7 +567,9 @@ onUnmounted(() => {
           ><Cpu :size="14" />{{ editor.config.device.toUpperCase() }}</span
         ><button
           class="subtle"
-          :disabled="!ready || busy || editor.running"
+          :disabled="
+            !ready || busy || editor.running || workspace === 'Model Imports'
+          "
           @click="runForward"
         >
           <Play :size="13" /> Forward</button
@@ -510,7 +586,13 @@ onUnmounted(() => {
         ><button
           v-else
           class="primary"
-          :disabled="!ready || busy || code.running || code.readOnly"
+          :disabled="
+            !ready ||
+            busy ||
+            code.running ||
+            code.readOnly ||
+            workspace === 'Model Imports'
+          "
           @click="train()"
         >
           <Play :size="13" fill="currentColor" /> Train model
@@ -651,6 +733,26 @@ onUnmounted(() => {
           >
             <FileCode2 :size="12" /><span>{{ file }}</span>
           </button>
+          <button
+            class="source-explorer-file"
+            :disabled="!editor.projectPath"
+            @click="showModelImport"
+          >
+            <FolderOpen :size="12" /><span>Import model…</span>
+          </button>
+          <button
+            class="source-explorer-file"
+            v-for="item in models.completed"
+            :key="item.id"
+            :title="item.artifact?.file_path"
+            @click="
+              workspace = 'Model Imports';
+              models.open(item.id);
+            "
+          >
+            <Box :size="12" /><span>{{ item.artifact?.name }}</span
+            ><code>{{ item.artifact?.format }}</code>
+          </button>
           <p :title="editor.projectPath">
             {{ editor.projectPath || "Create a project to persist files" }}
           </p>
@@ -689,6 +791,11 @@ onUnmounted(() => {
             :inspector-visible="inspectorVisible"
             @toggle-inspector="inspectorVisible = !inspectorVisible"
             @error="showError"
+          /><ModelBrowser
+            v-else-if="workspace === 'Model Imports'"
+            ref="modelBrowser"
+            :desktop="appInfo?.desktop"
+            @open-python="perform(openImportedPython)"
           /><TrainingPanel
             v-else-if="workspace === 'Training'"
             :cuda-available="environment?.cuda_available ?? false"
@@ -920,6 +1027,34 @@ onUnmounted(() => {
           </div>
         </section>
       </main>
+      <div
+        v-if="workspace === 'Model Imports'"
+        class="model-inspector-resizer"
+        role="separator"
+        aria-label="Resize model inspector"
+        aria-orientation="vertical"
+        tabindex="0"
+        @pointerdown="
+          resizingModelInspector = true;
+          ($event.currentTarget as HTMLElement).setPointerCapture(
+            $event.pointerId,
+          );
+        "
+        @pointermove="resizeModelInspector"
+        @pointerup="resizingModelInspector = false"
+        @pointercancel="resizingModelInspector = false"
+        @keydown.left.prevent="
+          modelInspectorWidth = Math.min(560, modelInspectorWidth + 10)
+        "
+        @keydown.right.prevent="
+          modelInspectorWidth = Math.max(280, modelInspectorWidth - 10)
+        "
+      ></div>
+      <ModelInspector
+        v-if="workspace === 'Model Imports'"
+        :style="{ width: `${modelInspectorWidth}px` }"
+        @open-python="perform(openImportedPython)"
+      />
       <AnalysisInspector
         v-if="workspace === 'Model Graph' && inspectorVisible && code.readOnly"
       />
@@ -938,15 +1073,19 @@ onUnmounted(() => {
         >{{ ready ? "Worker connected" : "Worker disconnected" }}</span
       ><span
         >{{
-          code.readOnly
-            ? (code.activeAnalysis?.nodes.length ?? 0)
-            : (editor.graph.nodes?.length ?? 0)
+          workspace === "Model Imports"
+            ? (importedAnalysis?.nodes.length ?? 0)
+            : code.readOnly
+              ? (code.activeAnalysis?.nodes.length ?? 0)
+              : (editor.graph.nodes?.length ?? 0)
         }}
         nodes ·
         {{
-          code.readOnly
-            ? (code.activeAnalysis?.edges.length ?? 0)
-            : (editor.graph.edges?.length ?? 0)
+          workspace === "Model Imports"
+            ? (importedAnalysis?.edges.length ?? 0)
+            : code.readOnly
+              ? (code.activeAnalysis?.edges.length ?? 0)
+              : (editor.graph.edges?.length ?? 0)
         }}
         edges</span
       >

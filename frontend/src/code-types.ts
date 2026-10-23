@@ -21,7 +21,11 @@ export interface Diagnostic {
 }
 export type SourceMapping = Required<SchemaSourceMapping>;
 export type AnalysisNode = Omit<Required<SchemaAnalysisNode>, "tensors"> & {
-  tensors: { shape?: (string | number)[]; dtype?: string; device?: string };
+  tensors: {
+    shape?: (string | number | null)[] | null;
+    dtype?: string;
+    device?: string;
+  };
 };
 export type AnalysisGraph = Omit<
   Required<SchemaAnalysisGraph>,

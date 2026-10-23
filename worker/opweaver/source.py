@@ -53,6 +53,7 @@ class AnalysisGraph(Spec):
     id: str
     name: str
     source_hash: str
+    source_model_id: str | None = None
     nodes: list[AnalysisNode]
     edges: list[Edge]
     read_only: bool = True

@@ -1,0 +1,507 @@
+{
+  "$defs": {
+    "AnalysisGraph": {
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": "1.0",
+          "default": "1.0",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "origin": {
+          "default": "pytorch.fx",
+          "enum": [
+            "pytorch.fx",
+            "onnx"
+          ],
+          "title": "Origin",
+          "type": "string"
+        },
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "source_hash": {
+          "title": "Source Hash",
+          "type": "string"
+        },
+        "source_model_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source Model Id"
+        },
+        "nodes": {
+          "items": {
+            "$ref": "#/$defs/AnalysisNode"
+          },
+          "title": "Nodes",
+          "type": "array"
+        },
+        "edges": {
+          "items": {
+            "$ref": "#/$defs/Edge"
+          },
+          "title": "Edges",
+          "type": "array"
+        },
+        "read_only": {
+          "default": true,
+          "title": "Read Only",
+          "type": "boolean"
+        },
+        "diagnostics": {
+          "items": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "title": "Diagnostics",
+          "type": "array"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "source_hash",
+        "nodes",
+        "edges"
+      ],
+      "title": "AnalysisGraph",
+      "type": "object"
+    },
+    "AnalysisNode": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "label": {
+          "title": "Label",
+          "type": "string"
+        },
+        "operator": {
+          "title": "Operator",
+          "type": "string"
+        },
+        "kind": {
+          "title": "Kind",
+          "type": "string"
+        },
+        "module_path": {
+          "default": "",
+          "title": "Module Path",
+          "type": "string"
+        },
+        "parameters": {
+          "additionalProperties": true,
+          "title": "Parameters",
+          "type": "object"
+        },
+        "inputs": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Inputs",
+          "type": "array"
+        },
+        "outputs": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Outputs",
+          "type": "array"
+        },
+        "tensors": {
+          "additionalProperties": true,
+          "title": "Tensors",
+          "type": "object"
+        },
+        "details": {
+          "additionalProperties": true,
+          "title": "Details",
+          "type": "object"
+        }
+      },
+      "required": [
+        "id",
+        "label",
+        "operator",
+        "kind"
+      ],
+      "title": "AnalysisNode",
+      "type": "object"
+    },
+    "Edge": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "source": {
+          "title": "Source",
+          "type": "string"
+        },
+        "source_port": {
+          "default": "out",
+          "title": "Source Port",
+          "type": "string"
+        },
+        "target": {
+          "title": "Target",
+          "type": "string"
+        },
+        "target_port": {
+          "default": "in",
+          "title": "Target Port",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "source",
+        "target"
+      ],
+      "title": "Edge",
+      "type": "object"
+    },
+    "ModelArtifact": {
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": "1.0",
+          "default": "1.0",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "format": {
+          "default": "onnx",
+          "enum": [
+            "onnx",
+            "pytorch"
+          ],
+          "title": "Format",
+          "type": "string"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "file_path": {
+          "title": "File Path",
+          "type": "string"
+        },
+        "sha256": {
+          "title": "Sha256",
+          "type": "string"
+        },
+        "file_bytes": {
+          "title": "File Bytes",
+          "type": "integer"
+        },
+        "total_file_bytes": {
+          "title": "Total File Bytes",
+          "type": "integer"
+        },
+        "external_files": {
+          "items": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "title": "External Files",
+          "type": "array"
+        },
+        "imported_at": {
+          "title": "Imported At",
+          "type": "number"
+        },
+        "source_name": {
+          "title": "Source Name",
+          "type": "string"
+        },
+        "source_path": {
+          "title": "Source Path",
+          "type": "string"
+        },
+        "importer_id": {
+          "title": "Importer Id",
+          "type": "string"
+        },
+        "importer_version": {
+          "default": "1",
+          "title": "Importer Version",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "file_path",
+        "sha256",
+        "file_bytes",
+        "total_file_bytes",
+        "imported_at",
+        "source_name",
+        "source_path",
+        "importer_id"
+      ],
+      "title": "ModelArtifact",
+      "type": "object"
+    },
+    "ModelDiagnostic": {
+      "additionalProperties": false,
+      "properties": {
+        "severity": {
+          "enum": [
+            "error",
+            "warning",
+            "info"
+          ],
+          "title": "Severity",
+          "type": "string"
+        },
+        "code": {
+          "default": "MODEL_ANALYSIS",
+          "title": "Code",
+          "type": "string"
+        },
+        "message": {
+          "title": "Message",
+          "type": "string"
+        },
+        "node": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Node"
+        },
+        "source": {
+          "default": "model.import",
+          "title": "Source",
+          "type": "string"
+        },
+        "suggested_action": {
+          "default": "",
+          "title": "Suggested Action",
+          "type": "string"
+        }
+      },
+      "required": [
+        "severity",
+        "message"
+      ],
+      "title": "ModelDiagnostic",
+      "type": "object"
+    },
+    "ModelMetadata": {
+      "additionalProperties": false,
+      "properties": {
+        "ir_version": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "string"
+            }
+          ],
+          "title": "Ir Version"
+        },
+        "opsets": {
+          "additionalProperties": {
+            "type": "integer"
+          },
+          "title": "Opsets",
+          "type": "object"
+        },
+        "producer": {
+          "default": "",
+          "title": "Producer",
+          "type": "string"
+        },
+        "producer_version": {
+          "default": "",
+          "title": "Producer Version",
+          "type": "string"
+        },
+        "model_version": {
+          "default": 0,
+          "title": "Model Version",
+          "type": "integer"
+        },
+        "domain": {
+          "default": "",
+          "title": "Domain",
+          "type": "string"
+        },
+        "doc_string": {
+          "default": "",
+          "title": "Doc String",
+          "type": "string"
+        },
+        "metadata": {
+          "items": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "title": "Metadata",
+          "type": "array"
+        },
+        "parser_version": {
+          "title": "Parser Version",
+          "type": "string"
+        },
+        "local_functions": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Local Functions",
+          "type": "array"
+        },
+        "overridable_initializers": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Overridable Initializers",
+          "type": "array"
+        },
+        "scope": {
+          "title": "Scope",
+          "type": "string"
+        },
+        "entry": {
+          "default": "",
+          "title": "Entry",
+          "type": "string"
+        }
+      },
+      "required": [
+        "ir_version",
+        "parser_version",
+        "scope"
+      ],
+      "title": "ModelMetadata",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "1.0",
+      "default": "1.0",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "success": {
+      "const": true,
+      "default": true,
+      "title": "Success",
+      "type": "boolean"
+    },
+    "artifact": {
+      "$ref": "#/$defs/ModelArtifact"
+    },
+    "analysis": {
+      "$ref": "#/$defs/AnalysisGraph"
+    },
+    "model": {
+      "$ref": "#/$defs/ModelMetadata"
+    },
+    "inputs": {
+      "items": {
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "title": "Inputs",
+      "type": "array"
+    },
+    "outputs": {
+      "items": {
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "title": "Outputs",
+      "type": "array"
+    },
+    "initializers": {
+      "items": {
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "title": "Initializers",
+      "type": "array"
+    },
+    "statistics": {
+      "additionalProperties": true,
+      "title": "Statistics",
+      "type": "object"
+    },
+    "validation": {
+      "additionalProperties": true,
+      "title": "Validation",
+      "type": "object"
+    },
+    "diagnostics": {
+      "items": {
+        "$ref": "#/$defs/ModelDiagnostic"
+      },
+      "title": "Diagnostics",
+      "type": "array"
+    },
+    "subgraphs": {
+      "additionalProperties": {
+        "$ref": "#/$defs/AnalysisGraph"
+      },
+      "title": "Subgraphs",
+      "type": "object"
+    },
+    "pytorch": {
+      "anyOf": [
+        {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Pytorch"
+    }
+  },
+  "required": [
+    "artifact",
+    "analysis",
+    "model",
+    "inputs",
+    "outputs",
+    "initializers",
+    "statistics",
+    "validation",
+    "diagnostics"
+  ],
+  "title": "GraphImportResult",
+  "type": "object"
+}

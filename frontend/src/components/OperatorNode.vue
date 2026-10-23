@@ -34,12 +34,10 @@ const op = computed(() =>
   editor.registry.find((o) => o.id === node.value?.operator.id),
 );
 const tensor = computed(() =>
-  props.analysis?.tensors.shape
-    ? {
-        shape: props.analysis.tensors.shape,
-        dtype: props.analysis.tensors.dtype,
-        device: props.analysis.tensors.device,
-      }
+  props.analysis
+    ? Array.isArray(props.analysis.tensors.shape)
+      ? props.analysis.tensors
+      : undefined
     : editor.validation.tensors[
         `${props.id}:${node.value?.outputs?.[0]?.name ?? "in"}`
       ],
@@ -74,21 +72,39 @@ const summary = computed(() => {
 <template>
   <div
     class="operator-node"
+    :style="{
+      minHeight: `${Math.max(94, 70 + (Math.max(node?.inputs?.length ?? 0, node?.outputs?.length ?? 0) - 1) * 24)}px`,
+    }"
     :class="[
       { selected, invalid: errors.length > 0 },
       op?.category?.toLowerCase(),
     ]"
-    :title="errors.map((e) => e.message).join('\n')"
+    :title="
+      analysis
+        ? `${analysis.label} · ${analysis.operator}`
+        : errors.map((e) => e.message).join('\n')
+    "
   >
     <div class="node-heading">
       <span class="node-icon"><component :is="icon" :size="15" /></span
       ><strong>{{ node?.label || op?.label }}</strong
-      ><span class="node-type">{{ op?.version }}</span>
+      ><span v-if="analysis" class="node-port-count"
+        >{{ node?.inputs?.length ?? 0 }}→{{ node?.outputs?.length ?? 0 }}</span
+      ><span class="node-type">{{
+        analysis?.details?.known === false
+          ? "?"
+          : (op?.version ?? analysis?.details?.opset)
+      }}</span>
     </div>
     <div class="node-description">{{ summary }}</div>
     <div class="node-tensor">
       <span class="tensor-dot"></span
-      >{{ tensor ? `[${tensor.shape.join(", ")}]` : "shape pending"
+      >{{
+        tensor?.shape
+          ? `[${tensor.shape.map((d) => d ?? "?").join(", ")}]`
+          : analysis
+            ? "shape unknown"
+            : "shape pending"
       }}<span>{{ tensor?.dtype ?? "—" }}</span>
     </div>
     <template v-for="(port, index) in node?.inputs" :key="`in-${port.name}`">

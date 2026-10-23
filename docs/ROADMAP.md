@@ -19,13 +19,15 @@ Wails/Go/Vue/Pinia/Vue Flow，Design Graph 1.0，Eager 模型、Autograd、合�
 
 当前限制：FX 为配置示例输入上的 CPU/eval 分析；动态控制流不支持，未知节点保留为分析；没有静态等价证明。任意手写模型不保证转成 Design Graph。Code-First 不开放训练或任意反向改线，生成模型不迁移原权重。第三方自动插件加载、OS 沙箱、完整 Python 项目依赖打包未实现。
 
-## P0-B — 下一阶段，尚未实现
+## P0-B — 已完成
 
 1. ONNX 文件作为独立 ModelArtifact 导入，原始模型只读保留。
 2. ONNX Graph origin 和来源/版本，复用现有 Analysis Graph 渲染与 Inspector。
 3. 实读节点、属性、权重、输入输出、动态维度、Shape/Dtype 和未知算子诊断。
 4. 模型 Inspector 的真实参数量、文件大小、算子分布；不可靠 FLOPs 显示未测量。
-5. 本地生成轻量 ONNX fixture，完成任务书测试 E。
+5. 统一 ImporterRegistry，PyTorch 复用 FX 并可回到 Monaco；ModelArtifact/Metadata/Diagnostic/GraphImportResult。
+6. 属性子图及外层捕获、多输出、搜索、高亮、分组/展开、600 节点回归、异步导入和持久化。
+7. 离线模型与任务书 A–G 验证，详情见 VALIDATION.md。
 
 ## P0-C — ONNX CPU 优化闭环，尚未实现
 

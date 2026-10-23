@@ -10,6 +10,7 @@ export type Origin = "pytorch.fx" | "onnx";
 export type Id = string;
 export type Name = string;
 export type SourceHash = string;
+export type SourceModelId = string | null;
 export type Id1 = string;
 export type Label = string;
 export type Operator = string;
@@ -35,6 +36,7 @@ export interface AnalysisGraph {
   id: Id;
   name: Name;
   source_hash: SourceHash;
+  source_model_id?: SourceModelId;
   nodes: Nodes;
   edges: Edges;
   read_only?: ReadOnly;
@@ -50,11 +52,15 @@ export interface AnalysisNode {
   inputs?: Inputs;
   outputs?: Outputs;
   tensors?: Tensors;
+  details?: Details;
 }
 export interface Parameters {
   [k: string]: unknown;
 }
 export interface Tensors {
+  [k: string]: unknown;
+}
+export interface Details {
   [k: string]: unknown;
 }
 export interface Edge {

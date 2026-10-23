@@ -65,4 +65,6 @@ npm run schema
 
 `SourceMapping` 另有 `source-mapping.schema.json`：file_path、start_line/end_line、module_path、graph_node_id、status（exact/inferred/unmapped）、reason。行号为一开始，缺乏可靠位置时为 null。直接构造定义是 exact，捕获调用栈位置是 inferred；不把 inferred 当成可精确改写的定义。一个源码位置允许多个节点引用。
 
-Analysis Graph 可在全部操作/端口/Shape/数值对照受支持时投影为 Design Graph；保留原始分析结果及来源。ONNX origin 只预留类型，P0-B 另行实现读取器，不承诺从 ONNX 恢复 PyTorch 源码。
+PyTorch Analysis Graph 可在全部操作/端口/Shape/数值对照受支持时投影为 Design Graph，保留原始分析和来源。P0-B 已实现 ONNX origin：source_model_id 关联版本化产物，节点 details 保存 domain/op_type/opset、各端口 Tensor、schema 状态和子图链接；parameters 保存真实属性。ONNX 保持只读，不承诺恢复 PyTorch 源码。
+
+GraphImportResult（schemas/onnx-report.schema.json）统一封装模型产物、ModelMetadata、主/子分析图、输入输出、权重摘要、统计和结构化 ModelDiagnostic。子图保留外层自由 Tensor 捕获；UI 分组仅是视图投影，不更改原图/控制流。

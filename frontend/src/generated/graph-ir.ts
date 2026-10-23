@@ -16,13 +16,7 @@ export type Id2 = string;
 export type Version = string;
 export type Name1 = string;
 export type Shape = (number | string)[];
-export type Dtype =
-  | "float32"
-  | "float64"
-  | "float16"
-  | "bfloat16"
-  | "int64"
-  | "bool";
+export type Dtype = "float32" | "float64" | "float16" | "bfloat16" | "int64" | "bool";
 export type Device = "cpu" | "cuda" | "any";
 export type Inputs = Port[];
 export type Outputs = Port[];
@@ -43,13 +37,7 @@ export type Outputs1 = Port[];
 export type Modules = ModuleSpec[];
 export type Id5 = string;
 export type Version2 = string;
-export type Kind =
-  | "operator"
-  | "model"
-  | "training"
-  | "optimization"
-  | "kernel"
-  | "backend";
+export type Kind = "operator" | "model" | "training" | "optimization" | "kernel" | "backend";
 export type Plugins = PluginReference[];
 
 export interface Graph {

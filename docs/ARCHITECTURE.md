@@ -1,4 +1,4 @@
-# 架构与实施清单（基线 + P0-A）
+# 架构与实施清单（基线 + P0-A/P0-B）
 
 ## 执行边界
 
@@ -13,6 +13,7 @@ Wails / Go App
                               ├── Validation → GraphModule (nn.Module)
                               ├── AST / Codegen / Source Mapping
                               ├── CaptureTasks → disposable FX/Forward child
+                              ├── ModelTasks / ImporterRegistry → ONNX / reused FX
                               ├── TrainingEngine → PyTorch Eager (CPU/CUDA)
                               ├── RunStore → SQLite metadata/experiments
                               └── artifacts → checkpoint + graph snapshot
@@ -33,12 +34,13 @@ Go 不实现 Tensor、Autograd 或训练计算；GPU 调用全部位于独立 Wo
 | P1 | SQLite 历史、Checkpoint、应用重开后恢复 | 完成 |
 | P1 | 核心自动化测试、真实 Worker 集成、桌面/UI 验收 | 见 VALIDATION.md |
 | P0-A | Monaco、源码文件、Graph ↔ Code、Source Mapping、同步/冲突、FX 子进程与 Forward 验证 | 完成 |
-| 新 P0-B / P0-C | ONNX 导入、ORT 优化/Benchmark | 尚未实现，下一阶段 |
+| P0-B | 统一 ONNX/PyTorch 导入、ModelArtifact、模型 Inspector/Diagnostics/子图/持久化 | 完成 |
+| P0-C | ORT 推理、优化/Benchmark | 尚未实现，下一阶段 |
 | 新 P1 / P2 | Olive、NVIDIA、外部插件、子图、Kernel、大模型 | 路线已记录，未实现 |
 
 ## 权威数据与同步
 
-Python `ir.py` 的 Pydantic 模型是 Design IR 的唯一类型源；`source.py` 定义 AnalysisGraph 和 SourceMapping。`scripts/generate_schema.py` 生成这三者和 TrainingConfig 共四个 JSON Schema；`npm run schema` 生成对应前端类型。Go 对 Graph 使用 `json.RawMessage`，避免维护第三份手工 DTO；保存和加载前调用 Worker 解析。语义错误允许保存未完成模型，Schema 格式错误拒绝保存。布局独立版本化。
+Python `ir.py` 是 Design IR 类型源，`source.py` 定义 AnalysisGraph/SourceMapping，`model_artifact.py` 定义 GraphImportResult。生成脚本生成这四者和 TrainingConfig 共五个 JSON Schema，并由 npm run schema 生成 TS。Go 对 Graph 使用 json.RawMessage，避免维护第三份 DTO；保存/加载前 Worker 解析。语义错误允许保存未完成模型，Schema 格式错误拒绝保存，布局独立版本化。
 
 Pinia 保存语义图与独立 layout。Vue Flow 节点是由 IR/布局派生的视图，画布临时属性不进入 IR。参数变更触发 250ms 去抖验证；请求带本地修订计数，过期结果不能覆盖新图。连线先本地拒绝自环、重复输入与环路，再由 Worker 验证 Shape/Dtype。训练前强制验证并保存快照。
 
@@ -46,7 +48,7 @@ Pinia 保存语义图与独立 layout。Vue Flow 节点是由 IR/布局派生的
 
 ### P0-A 图和代码协作
 
-Design Graph 表达受支持、可编辑和可执行的结构；FX Analysis Graph 独立记录原始 FX 节点/边/属性/Shape/Dtype/来源。两者复用 GraphCanvas/OperatorNode，不把 Vue Flow 的临时状态写回 IR。Analysis origin 为 `pytorch.fx`；`onnx` 只预留类型值，没有 ONNX 导入器。
+Design Graph 表达受支持、可编辑和可执行的结构；Analysis Graph 独立记录原始节点/边/属性/Shape/Dtype/来源，origin 为 `pytorch.fx` 或 `onnx`。三类图复用 GraphCanvas/OperatorNode，不把 Vue Flow 临时状态写入 IR。P0-B 增加 source_model_id 和 details，保留域、版本、各端口 Tensor 等格式语义；旧 P0-A 数据仍可读取。
 
 `source.py` 的 AST 检查不执行文件。用户选择顶层模型类/工厂、Constructor JSON 和具体 Example inputs，点击 Parse 才启动 `code_tasks.py` 管理的独立 `code_runner` 进程。它用实际安装的 PyTorch FX symbolic_trace/ShapeProp；自定义 Tracer 记录调用位置，并通过 registry 识别受支持 leaf module。原模型 eval Forward 和 FX Forward 使用相同示例输入比较输出；不一致时禁止投影为可编辑 Design Graph。此校验不证明所有输入下等价。
 
@@ -95,3 +97,19 @@ PassManager 在原始图的深拷贝上变换，验收失败返回原始图并�
 Python 子进程隔离故障，不是权限沙箱。P0-A UI 显式提示 Parse 会执行本地 Python；打开/导入不执行，没有自动发现插件功能。捕获时用户代码拥有当前账户权限，未来可信隔离需容器/OS 权限、文件/网络/资源配额。Checkpoint 用 `torch.load(weights_only=True)`，且只接受当前项目 checkpoints 路径；这不是对所有恶意文件的完整隔离。
 
 本地 HTTP/SSE 适配器仅为开发/E2E，绑定 `127.0.0.1:34115`，检查 Host/Origin 与 RPC 自定义头；没有远程用户认证，不用于公网或团队服务。原生产品默认直接使用 Wails bindings。
+
+## P0-B 统一模型导入
+
+`importers.py` 定义 ModelImporter Protocol 和显式注册表：ONNX Importer 解析 ModelProto，PyTorch Importer 直接复用 P0-A capture。后端 model.importers/model.probe 提供格式能力和静态入口；前端不解析模型内容。Python 捕获保留构造/输入配置、Source Mapping，可返回代码协作；.pt/.pth 不自动反序列化。
+
+model_artifact.py 的 ModelArtifact、ModelMetadata、ModelDiagnostic、GraphImportResult 是版本化报告源，生成第五份 JSON Schema/TS。Artifact 包含原路径、托管路径、SHA256、大小、外部文件、导入器版本/时间；报告含主图、子图、元数据、I/O、权重统计和诊断。ONNX source mapping 不虚构，PyTorch 保留实际映射。
+
+ModelTasks 复用 CaptureTasks 的异步进程/取消/超时/日志钩子，独立 model.task 不覆盖训练 Job。耗时复制/checker/Shape inference/提取在 import_runner 子进程。ONNX 不执行推理，Python 仅明确点击执行按钮后运行。
+
+原 protobuf 和 external data 流式原样复制到 .opweaver/imports/<id>/model，校验外部相对路径/符号链接/字节范围，不展开外部 Tensor。Shape inference 处理内存副本，不回写模型。权重只传类型/形状/元素数/逻辑字节数。Initializer 不声称可训练；未知 schema 保留，结构错误、缺文件和异常导致失败，上一有效图保留。
+
+If/Loop/Scan 属性子图独立提取并链接父节点；外层自由 Tensor 捕获建立显式依赖。UI 可单独查看，不支持修改/执行控制流。schema 已知、checker 通过和运行时支持是不同结论。
+
+结果/请求/日志在文件系统；SQLite metadata 仅存任务/Artifact 摘要，不存整个分析图或权重。model.list/load 恢复，旧进程未终结任务标 FAILED。明确节点/报告/时间限额，无自动 GC。
+
+GraphCanvas 增加外部只读图，原 Design 渲染行为保持不变。>250 节点默认按算子折叠；模块/算子分组是视图投影，搜索可定位原节点，上下游遍历真实边。分析图按视口渲染、缓存布局；选中节点不重新解析模型。Inspector 属性可折叠、权重可检索、宽度可调。自动布局当前为确定性网格，未宣称最优分层布局。

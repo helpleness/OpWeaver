@@ -11,7 +11,9 @@ import torch
 from .builder import GraphModule
 from .code_tasks import CaptureTasks
 from .codegen import generate
+from .importers import builtin_importers
 from .ir import Graph
+from .model_tasks import ModelTasks
 from .registry import builtin_registry
 from .source import inspect_source, patch_parameter
 from .storage import RunStore
@@ -25,6 +27,7 @@ class Worker:
         self.registry = builtin_registry()
         self.engine = TrainingEngine(lambda event: send({"protocol": 1, **event}))
         self.code_tasks = CaptureTasks(lambda event: send({"protocol": 1, **event}))
+        self.model_tasks = ModelTasks(lambda event: send({"protocol": 1, **event}))
 
     def dispatch(self, method: str, params: dict):
         if method == "environment":
@@ -59,6 +62,20 @@ class Worker:
             return self.code_tasks.snapshot(params["id"])
         if method == "code.capture.stop":
             return self.code_tasks.stop(params["id"])
+        if method == "model.import.start":
+            return self.model_tasks.start(params)
+        if method == "model.importers":
+            return builtin_importers().manifests()
+        if method == "model.probe":
+            return builtin_importers().probe(params["source"])
+        if method == "model.import.status":
+            return self.model_tasks.snapshot(params["id"])
+        if method == "model.import.stop":
+            return self.model_tasks.stop(params["id"])
+        if method == "model.list":
+            return self.model_tasks.history(params["project"])
+        if method == "model.load":
+            return self.model_tasks.load(params["project"], params["id"])
         if method == "forward":
             if self.engine.active():
                 raise ValueError("Stop training before running a separate forward inspection")
@@ -104,6 +121,7 @@ class Worker:
         if method == "train.history":
             return RunStore(Path(params["project"])).recover(set(self.engine.jobs))
         if method == "shutdown":
+            self.model_tasks.shutdown()
             self.code_tasks.shutdown()
             self.engine.shutdown()
             return {"stopped": True}
@@ -141,6 +159,7 @@ def main():
             )
     worker.engine.shutdown()
     worker.code_tasks.shutdown()
+    worker.model_tasks.shutdown()
 
 
 if __name__ == "__main__":

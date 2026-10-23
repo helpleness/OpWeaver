@@ -17,6 +17,7 @@ class CaptureTasks:
     runner_module = "opweaver.code_runner"
     task_directory = "captures"
     metadata_prefix = "capture"
+    task_label = "Model capture"
 
     def __init__(self, emit=None):
         self.emit = emit or (lambda event: None)
@@ -135,7 +136,7 @@ class CaptureTasks:
                 (folder / "stdout.log").write_bytes(stdout)
                 (folder / "stderr.log").write_bytes(stderr)
                 raise TimeoutError(
-                    "Model capture timed out. Child process was terminated; the source and previous graph were retained."
+                    f"{self.task_label} timed out. Child process was terminated; the source and previous graph were retained."
                 ) from None
             (folder / "stdout.log").write_bytes(stdout)
             (folder / "stderr.log").write_bytes(stderr)

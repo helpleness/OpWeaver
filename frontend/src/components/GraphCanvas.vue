@@ -23,18 +23,38 @@ import {
 import OperatorNode from "./OperatorNode.vue";
 import { useEditor } from "../stores/editor";
 import { useCode } from "../stores/code";
+import type { AnalysisGraph } from "../code-types";
 
+const props = defineProps<{
+  analysis?: AnalysisGraph | null;
+  selectedNode?: string | null;
+  highlighted?: string[];
+}>();
 const editor = useEditor();
 const code = useCode();
-const emit = defineEmits<{ error: [message: string] }>();
+const emit = defineEmits<{
+  error: [message: string];
+  select: [id: string | null];
+}>();
 const { screenToFlowCoordinate, fitView, getNodes } = useVueFlow({
   id: "model",
 });
 const dragging = ref(false);
 const nodes = shallowRef<Node[]>([]);
 const analysisPositions = ref<Record<string, { x: number; y: number }>>({});
-const analysis = computed(() => code.activeAnalysis);
-const readonly = computed(() => code.readOnly);
+const external = computed(() => props.analysis !== undefined);
+const analysis = computed(() =>
+  external.value ? props.analysis : code.activeAnalysis,
+);
+const readonly = computed(() => external.value || code.readOnly);
+const highlights = computed(() => new Set(props.highlighted ?? []));
+function cacheAnalysisLayout() {
+  if (analysis.value)
+    sessionStorage.setItem(
+      `opweaver.analysisLayout.${analysis.value.id}`,
+      JSON.stringify(analysisPositions.value),
+    );
+}
 
 // Transient positions belong to Vue Flow until release. Feeding saved coordinates
 // back during pointer selection was resetting the node beneath the cursor.
@@ -56,9 +76,18 @@ function syncNodes() {
               y: 80 + Math.floor(i / 4) * 190,
             }),
       data: { analysis: node },
-      selected:
-        code.analysisSelection.includes(node.id) ||
-        code.selectedAnalysis === node.id,
+      style: {
+        opacity:
+          external.value &&
+          props.highlighted?.length &&
+          !highlights.value.has(node.id)
+            ? 0.3
+            : 1,
+      },
+      selected: external.value
+        ? props.selectedNode === node.id
+        : code.analysisSelection.includes(node.id) ||
+          code.selectedAnalysis === node.id,
     }));
   } else {
     nodes.value = (editor.graph.nodes ?? []).map((node, i) => ({
@@ -81,6 +110,8 @@ watch(
     analysis.value,
     code.selectedAnalysis,
     code.analysisSelection,
+    props.selectedNode,
+    props.highlighted,
   ],
   syncNodes,
   { deep: true, immediate: true },
@@ -99,10 +130,14 @@ const edges = computed(() =>
     animated: !analysis.value && editor.running,
     style: {
       stroke:
-        !analysis.value &&
-        editor.validation.issues.some((i) => i.edge === edge.id)
-          ? "#ee7b85"
-          : "#65758b",
+        external.value &&
+        highlights.value.has(edge.source) &&
+        highlights.value.has(edge.target)
+          ? "#b1a0ff"
+          : !analysis.value &&
+              editor.validation.issues.some((i) => i.edge === edge.id)
+            ? "#ee7b85"
+            : "#65758b",
       strokeWidth: 1.5,
     },
   })),
@@ -163,16 +198,26 @@ function dragStop(event: NodeDragEvent) {
   const positions = Object.fromEntries(
     event.nodes.map((n) => [n.id, { ...n.position }]),
   );
-  if (analysis.value) Object.assign(analysisPositions.value, positions);
-  else editor.moveNodes(positions);
+  if (analysis.value) {
+    Object.assign(analysisPositions.value, positions);
+    cacheAnalysisLayout();
+  } else editor.moveNodes(positions);
   dragging.value = false;
   syncNodes();
 }
 function select(id: string) {
-  if (analysis.value) {
+  if (external.value) emit("select", id);
+  else if (analysis.value) {
     code.selectedAnalysis = id;
     code.locateNode(id);
   } else editor.selected = id;
+}
+function clearSelection() {
+  if (external.value) emit("select", null);
+  else if (analysis.value) {
+    code.selectedAnalysis = null;
+    code.analysisSelection = [];
+  } else editor.selected = null;
 }
 function arrange() {
   const order =
@@ -188,18 +233,31 @@ function arrange() {
   );
   if (analysis.value) {
     analysisPositions.value = positions;
+    cacheAnalysisLayout();
     syncNodes();
   } else editor.moveNodes(positions);
   void nextTick(() => fitView({ padding: 0.2, duration: 150 }));
 }
 watch(
-  () => analysis.value?.source_hash ?? editor.graph.id,
+  () => analysis.value?.id ?? editor.graph.id,
   () => {
-    analysisPositions.value = {};
+    try {
+      analysisPositions.value = JSON.parse(
+        sessionStorage.getItem(
+          `opweaver.analysisLayout.${analysis.value?.id}`,
+        ) ?? "{}",
+      );
+    } catch {
+      analysisPositions.value = {};
+    }
+    syncNodes();
     setTimeout(() => fitView({ padding: 0.2, duration: 150 }), 100);
   },
 );
-defineExpose({ fit: () => fitView({ padding: 0.2 }) });
+defineExpose({
+  fit: () => fitView({ padding: 0.2 }),
+  focus: (id: string) => fitView({ nodes: [id], padding: 0.5, maxZoom: 1 }),
+});
 </script>
 
 <template>
@@ -250,13 +308,19 @@ defineExpose({ fit: () => fitView({ padding: 0.2 }) });
       ></span
       >{{
         analysis
-          ? `${analysis.nodes.length} nodes · FX analysis`
+          ? `${analysis.nodes.length} nodes · ${analysis.origin === "onnx" ? "ONNX" : "FX"} analysis`
           : editor.validating
             ? "Checking graph…"
             : editor.validation.valid
               ? "Graph is valid"
               : `${editor.validation.issues.length} graph issues`
-      }}<span>{{ analysis ? "CPU eval · read-only" : "DAG · Eager" }}</span>
+      }}<span>{{
+        external
+          ? "ONNX · read-only"
+          : analysis
+            ? "CPU eval · read-only"
+            : "DAG · Eager"
+      }}</span>
     </div>
     <VueFlow
       id="model"
@@ -267,6 +331,7 @@ defineExpose({ fit: () => fitView({ padding: 0.2 }) });
       :max-zoom="2"
       :default-viewport="{ x: 20, y: 60, zoom: 0.8 }"
       fit-view-on-init
+      :only-render-visible-elements="external"
       :delete-key-code="readonly ? null : ['Backspace', 'Delete']"
       :nodes-connectable="!readonly"
       :edges-updatable="!readonly"
@@ -275,7 +340,7 @@ defineExpose({ fit: () => fitView({ padding: 0.2 }) });
       :node-drag-threshold="3"
       @connect="connect"
       @node-click="({ node }) => select(node.id)"
-      @pane-click="editor.selected = null"
+      @pane-click="clearSelection"
       @nodes-change="nodesChange"
       @edges-change="edgesChange"
       @node-drag-start="dragStart"
@@ -302,14 +367,20 @@ defineExpose({ fit: () => fitView({ padding: 0.2 }) });
         <div class="empty-graph-icon">⌘</div>
         <h2>
           {{
-            readonly ? "Capture your Python model." : "Your model starts here."
+            external
+              ? "Inspect an ONNX model."
+              : readonly
+                ? "Capture your Python model."
+                : "Your model starts here."
           }}
         </h2>
         <p>
           {{
-            readonly
-              ? "Open source, choose a model entry and parse explicitly."
-              : "Drag an Input from the library, then connect layers."
+            external
+              ? "Import a local model to inspect its real structure."
+              : readonly
+                ? "Open source, choose a model entry and parse explicitly."
+                : "Drag an Input from the library, then connect layers."
           }}
         </p>
         <span>Drag to pan · Scroll to zoom · Shift + drag to select</span>
