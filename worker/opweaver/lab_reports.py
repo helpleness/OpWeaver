@@ -96,6 +96,8 @@ def markdown_report(report):
         ("Optimization result / target environment", report.get("optimization")),
         ("Workflow requested / executed / observed", report.get("workflow_execution")),
         ("Numerical validation", report.get("validation")),
+        ("FP32 standalone task evaluation", report.get("baseline_evaluation")),
+        ("Held-out final evaluation", report.get("final_evaluation")),
         ("Calibration / evaluation datasets and independence", report.get("datasets")),
         ("Observed quantization representation", report.get("quantization")),
         ("Preprocessed artifact lineage", report.get("preprocessed_artifacts")),
@@ -172,7 +174,7 @@ def export_experiment(project, report, destination):
             copy_file(source.parent / ext["path"], model_target.parent / ext["path"])
         exported[key] = model_target.relative_to(target).as_posix()
     folder = experiment_folder(project, report["id"])
-    for role in ("calibration", "evaluation"):
+    for role in ("calibration", "evaluation", "final_evaluation"):
         dataset = (report.get("datasets") or {}).get(role)
         if dataset:
             from .datasets import load_dataset
@@ -187,6 +189,10 @@ def export_experiment(project, report, destination):
                     source.parent / sample["path"], target / "datasets" / role / sample["path"]
                 )
             exported[role + "_dataset"] = f"datasets/{role}/manifest.json"
+            for original in current.get("source_files", []):
+                copy_file(
+                    source.parent / original["path"], target / "datasets" / role / original["path"]
+                )
     if report.get("workflow_execution"):
         for name in [
             "request.json",

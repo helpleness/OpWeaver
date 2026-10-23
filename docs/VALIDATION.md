@@ -1,4 +1,52 @@
-# 验收记录：P1-B、P1-A、P0-C、P0-B、P0-A 与已有基线
+# 验收记录：P1-C1、P1-B、P1-A、P0-C、P0-B、P0-A 与已有基线
+
+## P1-C1 验收（2026-10-23，UTC+8）
+
+本轮按任务允许的子阶段交付 **P1-C1 代表性数据与真实评估**。C2 逐层激活/权重诊断、图中误差联动，以及 C3 诊断选点排除和重新量化闭环**尚未实现/未验收**。diagnostic 数据角色仅用于保存用途，不能当作诊断引擎。能力、格式、操作、文件和边界见 [P1-C1 实施说明](P1C1_IMPLEMENTATION.md)。
+
+| 检查 | 最终实际结果 |
+|---|---|
+| 修改前基线 | Python **140**、Vitest **24**、Go 3 packages / vet、TypeScript/Vite 通过；记录 test-results/p1c-baseline.log |
+| Python 全量 | **160 passed，0 skipped**；其中新增图片/分类专项 **20 项**，真实 ORT 与 Olive 执行，无量化 Mock |
+| 前端 | **26 passed**；新增任务质量计数、百分点/相对百分比、无评价/Top5 不适用展示检查 |
+| Go / vet | **9 tests / 3 packages passed**，包括真实 Worker/Olive/旧 NPZ 静态量化 RPC 集成；vet 通过 |
+| Ruff / TypeScript / Vite | **通过**；56 个 Python 文件；保留既有 Monaco/主 bundle 大 chunk 提示 |
+| E2E | **12 passed**；原有 11 条完整保留，新增图片四角色→FP32→真实 INT8→质量→导出→重载；最终两处界面修复后又定向重跑图片完整流程 **1 passed** |
+| Windows amd64 | Wails 2.17.0 生产构建通过，最终原生程序实际运行和关闭重启恢复通过 |
+
+全量日志：`test-results/p1c1-final-regression.log`（Python160，226.64s、前端26、Go/vet）；最终 UI 修复后另运行前端26及 TypeScript/Vite，并定向 E2E 通过，未修改 Worker/Go。最后给既有分类测试补充真实 Top5=0/零分母断言后，图片专项再次 **20 passed（20.88s）**，Ruff 通过。完整 E2E 12 条约 5 分钟。构建日志：`test-results/p1c1-final-build.log`。没有声称远程 CI 已运行。
+
+新增测试验证：PNG/JPEG、六类标签映射、精确 RGB/BGR/布局/Normalize、Resize/Crop、动态 batch/尾批/drop_last、快照与可回放 CSV、Pillow/NumPy 版本、指纹、独立原图、重新分批及预处理改变后的重叠、最终评估隔离、原模型独立评价、真实 INT8 配对评价及最终评估、真实错误分类计数/百分比定义、少于五类不输出 Top5。还覆盖损坏/空/缺失/越界/重复原图、重复处理后 Tensor、非法名称/dtype/shape/映射/小数标签/std、失败快照清理与缺失引用。原有取消/超时/Worker 故障、Graph↔Code、训练恢复、鼠标拖动、导入/Inspector、ORT、多 Pass Olive、NPZ/Quality Gate 回归保持通过；本轮不声称已验收 C2 的诊断任务生命周期。
+
+### C1 原生桌面实测
+
+在原项目 `projects/model-mvkdmssb`，从原生 Import model 输入本地 ONNX 路径，检测格式、导入并解析 `examples/classification/color-classifier.onnx`，Artifact **0bf1c1e8ba7345c19ebdbb9da138a8ed**。这是有明确六类输出顺序的解析原型模型及离线生成图片，**全部是合成测试数据，不是生产代表性精度证明**。
+
+通过原生图片表单创建 calibration **c3cd0c9e2e234cbe919a1f22fff5d93f**、validation **1f4385bcb99c49508d0e0f80ea8d5b32**、final_evaluation **ecd405b51c3845d5b275603dfceed27c**。每集 12 张 / 6 批 / 6 类 / 每类2例，显式映射 red=0/green=1/blue=2/yellow=3/cyan=4/magenta=5，输入 image、RGB/NCHW、Resize8×8、无 Crop、float32、scale1/255、mean0/std1、bilinear、EXIF、synthetic_test；Final 默认无选择，创建该用途后才显式选择。原生本次采用8×8直接缩放；E2E 和 Python 专项另验证 Resize10×10 + CenterCrop8×8。四角色（含 diagnostic）的创建与恢复由 E2E 验证。
+
+原生 Run baseline only：实验 **75002050170147ebbac01b96e72f7ff5**，验证集 12 对 / 0 错，Top1/Top5=100%；最终评估另存同样12例。重启后的标题正确显示实际 baseline onnxruntime.cpu 1.31.0。
+
+原生 Run optimization experiment：沿用原有 Peephole → Opset18 → Static INT8 三 Pass，MinMax/QDQ/int8/per-channel、activation symmetric=False / weight symmetric=True、Conv/MatMul/Gemm 过滤；新实验 **c0881bb039ca400594f42654aa960391**，新 Artifact **54a41e203cc243d69b717b4c167ece45**，未覆盖旧实验/模型。Olive 消费证据 read_calls=6 / unique_batches=6。验证集两侧均12对/0错、Top1/Top5=100%；独立最终评估也是各12对。Accuracy drop=0个百分点、relative change=0%。
+
+| 原生配对指标 | FP32 | INT8 |
+|---|---:|---:|
+| 模型总字节 | 618 | 3,066 |
+| Mean ms | 0.008840 | 0.012944 |
+| P50 ms | 0.008600 | 0.012800 |
+| P95 ms | 0.009815 | 0.013810 |
+| requests/s，concurrency1 | 113,122.17 | 77,255.87 |
+| 验证 Top1 / Top5 | 100% / 100% | 100% / 100% |
+| 验证 correct / incorrect | 12 / 0 | 12 / 0 |
+
+两侧 conditions_hash / 输入摘要一致，ORT1.31.0 CPU EP、1/1线程、session optimization disable、warmup10/runs100，首个验证批次用于计时。未声明 Batch，不展示 samples/s；E2E 另验证显式 batch2。体积 **+396.12%**、平均延迟 **+46.43% / Regression**，不宣称优化更好。这个微小模型的 Q/DQ 与元数据开销不能代表业务模型性能。实测发生在顺序运行的本机环境，无硬件隔离承诺。
+
+验证集72个输出元素：MAE **0.0015287043319808112**、max absolute **0.003916382789611816**、max relative（非零参考值）**0.04257351120792192**、atol1e-5/rtol1e-4 超容差比例100%。原来的示例 MAE≤0 gate 保留，因此 Quality Gate failed，执行有效、Experiment Succeeded；Top1 不下降不能冒充输出无误差。实际观测 QDQ、2个整数权重 Tensor；这是整体误差，**不是逐层诊断结果**。
+
+原生 Export → Windows 目录选择 → `test-results/opweaver-c0881bb039ca400594f42654aa960391/`，含原始/量化模型及权重、三组数据各6 NPZ/12图片、manifest/原CSV/replay.csv、JSON/Markdown、实际工作流/footprint/消费日志。用该 bundle 的两侧模型和导出 NPZ 重新运行 ORT，验证/最终集准确率与保存值一致，数值摘要逐项完全一致，36张图片快照 Hash 全部通过；记录 `test-results/p1c1-native-replay.json`。
+
+关闭窗口、更新最终构建并重新启动后，原来的 Synced 五节点设计图、训练 `139f2860`（30 epochs / 480 steps / loss0.0564）、P1-B 模型/历史均保留。新 FP32 / INT8 模型、c0881bb0/75002050 实验、三个数据引用、Top1/Top5、误差、gate和Benchmark均恢复；没有 data unavailable。
+
+最终 exe：`build/bin/OpWeaverStudio.exe`，**16,664,064 B**，2026-10-23 **19:12:27**，SHA256 **6400b6cf4304da8690f053eb247c5b1b69c5d7164fc380516ea9ab084270352b**。随包 Worker 逐文件与源代码核对，包含新图片样例。Python/Pillow/PyTorch 和独立 Olive 仍为外部运行时。未验证干净电脑安装、签名包、所有DPI、GPU、Linux/macOS原生程序。
 
 ## P1-B 验收（2026-10-23，UTC+8）
 

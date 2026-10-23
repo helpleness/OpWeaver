@@ -3,16 +3,19 @@
 import hashlib
 import json
 import re
+import shutil
 import time
 import uuid
+from importlib.metadata import version
 from pathlib import Path
 
 import numpy as np
 
 from .benchmark import create_session, digest_file
+from .dataset_sources import ImageClassificationSource, NPZDatasetSource
 from .lab_inputs import check_feed, load_npz, prepare_inputs
 from .lab_reports import verify_artifact, write_json
-from .lab_types import BenchmarkConfig, DatasetConfig, InputConfig
+from .lab_types import BenchmarkConfig, DatasetConfig, DatasetManifest, InputConfig
 from .model_artifact import ModelArtifact
 from .model_tasks import ModelTasks
 from .storage import RunStore
@@ -73,6 +76,10 @@ def load_dataset(project, id, verify=True):
         raise ValueError("Dataset manifest escapes the snapshot directory")
     manifest = load_manifest(path, record["manifest_sha256"])
     if verify:
+        for source in manifest.get("source_files", []):
+            item = (folder / source["path"]).resolve(strict=True)
+            if not item.is_relative_to(folder) or digest_file(item) != source["sha256"]:
+                raise ValueError("Dataset source snapshot is missing or changed")
         for sample in manifest["samples"]:
             sample_arrays(path, sample)
     return {**manifest, "manifest_path": str(path), "manifest_sha256": record["manifest_sha256"]}
@@ -93,8 +100,46 @@ class DatasetFeeds:
         return sample_arrays(self.record["manifest_path"], self.record["samples"][index])[0]
 
 
+# All source adapters publish the same backend-independent iterator contract.
+DatasetIterator = DatasetFeeds
+
+
+def per_example_fingerprints(feed, batch):
+    if batch > 4096 or any(v.ndim and v.shape[0] != batch for v in feed.values()):
+        return []
+    return [
+        content_digest({k: v[i : i + 1] if v.ndim else v for k, v in feed.items()})
+        for i in range(batch)
+    ]
+
+
+def sample_identity_set(dataset):
+    values = set()
+    for sample in dataset["samples"]:
+        values.add("batch:" + sample["content_sha256"])
+        values.update("tensor:" + v for v in sample.get("example_fingerprints", []))
+        values.update("image:" + v["sha256"] for v in sample.get("source_items", []))
+    return values
+
+
+def dataset_overlap(left, right):
+    return sorted(sample_identity_set(left) & sample_identity_set(right))
+
+
 def create_dataset(project, raw):
     config = DatasetConfig.model_validate(raw)
+    folder = dataset_folder(project, uuid.uuid4().hex)
+    try:
+        return _create_dataset(project, config, folder)
+    except Exception:
+        # Only the new, unregistered snapshot created by this operation is removable.
+        scope = (Path(project).resolve(strict=True) / ".opweaver" / "datasets").resolve()
+        if folder.exists() and folder.resolve() == folder and folder.is_relative_to(scope):
+            shutil.rmtree(folder)
+        raise
+
+
+def _create_dataset(project, config, folder):
     if len(config.files) > 512:
         raise ValueError("A dataset supports at most 512 NPZ batches")
     model = ModelTasks().load(project, config.source_model_id)
@@ -113,12 +158,26 @@ def create_dataset(project, raw):
         raise ValueError("NPZ file count must equal the requested batch count")
     if config.mode == "random" and config.label_key:
         raise ValueError("Synthetic inputs have no ground-truth labels")
-    id = uuid.uuid4().hex
-    folder = dataset_folder(project, id)
+    id = folder.name
     folder.mkdir(parents=True, exist_ok=False)
     samples, total, examples = [], 0, 0
+    image_tensors = set()
     deadline = time.monotonic() + 45
-    for index in range(config.count):
+    source_adapter = None
+    if config.mode == "images":
+        source_adapter = ImageClassificationSource(config.image, folder, deadline)
+        if len(metadata) != 1 or config.image.input_name != metadata[0].name:
+            raise ValueError(
+                "Image classification requires one model input with the explicitly selected input name"
+            )
+    iterator = (
+        source_adapter.batches()
+        if source_adapter
+        else NPZDatasetSource(config.files, mapping, config.label_key).batches()
+        if config.mode == "npz"
+        else range(config.count)
+    )
+    for index, item in enumerate(iterator):
         if time.monotonic() > deadline:
             raise TimeoutError("Dataset preparation exceeded 45 seconds; use smaller batches")
         if config.mode == "random":
@@ -131,13 +190,7 @@ def create_dataset(project, raw):
             )
             feed, labels, source = feeds[0], None, "synthetic seeded input"
         else:
-            source = str(Path(config.files[index]).resolve(strict=True))
-            arrays = load_npz(Path(source))
-            expected = set(mapping.values()) | ({config.label_key} if config.label_key else set())
-            if set(arrays) != expected:
-                raise ValueError(f"NPZ keys differ from input mapping/label key: {source}")
-            feed = {name: arrays[key] for name, key in mapping.items()}
-            labels = arrays.get(config.label_key) if config.label_key else None
+            feed, labels, source = item
         check_feed(metadata, feed, config.shapes)
         for name, array in feed.items():
             if not array.size or not np.all(np.isfinite(array)):
@@ -150,6 +203,14 @@ def create_dataset(project, raw):
         total += sum(v.nbytes for v in feed.values()) + (labels.nbytes if labels is not None else 0)
         if total > MAX_DATASET_BYTES:
             raise ValueError("Dataset exceeds the 1 GiB tensor budget")
+        example_hashes = per_example_fingerprints(feed, batch) if examples + batch <= 4096 else []
+        if source_adapter:
+            for identity in example_hashes:
+                if identity in image_tensors:
+                    raise ValueError(
+                        "Duplicate preprocessed image tensor; check sources and preprocessing"
+                    )
+                image_tensors.add(identity)
         target = folder / f"batch-{index:04d}.npz"
         np.savez(target, **feed, **({"__opweaver_labels__": labels} if labels is not None else {}))
         samples.append(
@@ -171,9 +232,18 @@ def create_dataset(project, raw):
                     for n, v in feed.items()
                 ],
                 "labels": int(labels.size) if labels is not None else 0,
+                "label_sha256": hashlib.sha256(labels.tobytes()).hexdigest()
+                if labels is not None
+                else None,
+                "example_fingerprints": example_hashes,
+                "source_items": source if isinstance(source, list) else [],
             }
         )
         examples += batch
+    if not samples:
+        raise ValueError("Dataset has no usable batches; check batch_size/drop_last")
+    if source_adapter:
+        config.count = len(samples)
     warnings = []
     if config.count < 32:
         warnings.append(
@@ -183,25 +253,76 @@ def create_dataset(project, raw):
         warnings.append(
             "Synthetic seeded data; representativeness and task accuracy are not established"
         )
-    manifest = {
-        "schema_version": "1.0",
-        "id": id,
-        "name": config.name,
-        "format": "npz-batches-v1",
-        "role": config.role,
-        "config": config.model_dump(),
-        "model_hash": artifact.sha256,
-        "created_at": time.time(),
-        "batch_count": len(samples),
-        "example_count": examples,
-        "example_count_scope": "Axis 0 of the first non-scalar model input; scalar-only feeds count as one example per batch",
-        "tensor_bytes": total,
-        "fingerprint": hashlib.sha256(
-            "".join(s["content_sha256"] for s in samples).encode()
-        ).hexdigest(),
-        "samples": samples,
-        "warnings": warnings,
-    }
+    if any(not sample["example_fingerprints"] for sample in samples):
+        warnings.append(
+            "Per-example overlap checking is limited to the first 4096 examples with compatible batch axes; all batch hashes are checked"
+        )
+    if source_adapter:
+        warnings.append(
+            "Image representativeness is "
+            + config.image.provenance
+            + "; decoding and accuracy do not establish production coverage"
+        )
+        if source_adapter.dropped:
+            warnings.append(f"Explicit drop_last discarded {source_adapter.dropped} examples")
+    manifest = DatasetManifest(
+        **{
+            "schema_version": "1.0",
+            "id": id,
+            "name": config.name,
+            "format": "npz-batches-v1",
+            "role": config.role,
+            "config": config.model_dump(),
+            "model_hash": artifact.sha256,
+            "created_at": time.time(),
+            "batch_count": len(samples),
+            "example_count": examples,
+            "example_count_scope": "Axis 0 of the first non-scalar model input; scalar-only feeds count as one example per batch",
+            "tensor_bytes": total,
+            "fingerprint": hashlib.sha256(
+                json.dumps(
+                    {
+                        "batches": [(s["content_sha256"], s["label_sha256"]) for s in samples],
+                        "preprocessing": config.image.preprocessing.model_dump()
+                        if source_adapter
+                        else None,
+                        "class_mapping": config.image.class_mapping if source_adapter else {},
+                    },
+                    sort_keys=True,
+                ).encode()
+            ).hexdigest(),
+            "samples": samples,
+            "warnings": warnings,
+            "source_adapter": {
+                "type": "image_classification_csv" if source_adapter else config.mode,
+                "version": "1.0",
+                "numpy_version": version("numpy"),
+                **({"pillow_version": version("Pillow")} if source_adapter else {}),
+                **({"replay_manifest": "source/replay.csv"} if source_adapter else {}),
+            },
+            "source_files": source_adapter.source_files if source_adapter else [],
+            "class_mapping": config.image.class_mapping if source_adapter else {},
+            "label_distribution": dict(source_adapter.distribution) if source_adapter else {},
+            "observed_class_count": len([v for v in source_adapter.distribution.values() if v])
+            if source_adapter
+            else None,
+            "preprocessing": config.image.preprocessing.model_dump() if source_adapter else None,
+        }
+    ).model_dump()
+    for existing in RunStore(Path(project)).metadata_list("dataset:"):
+        overlap = dataset_overlap(manifest, existing)
+        if overlap:
+            manifest["overlaps"].append(
+                {"dataset_id": existing["id"], "role": existing["role"], "identities": len(overlap)}
+            )
+    if manifest["overlaps"]:
+        manifest["warnings"].append(
+            "Detectable sample overlap with saved datasets: "
+            + ", ".join(f"{v['role']} {v['dataset_id'][:8]}" for v in manifest["overlaps"][:10])
+            + "; final evaluation must remain held out"
+        )
+    if len(json.dumps(manifest, ensure_ascii=True, indent=2).encode()) > 4 * 1024**2:
+        raise ValueError("Dataset manifest exceeds 4 MiB; reduce examples or shorten source paths")
     write_json(folder / "manifest.json", manifest)
     record = {
         **manifest,
@@ -223,10 +344,25 @@ def dataset_pair(project, config):
         if config.evaluation.dataset_id
         else None
     )
+    final = (
+        load_dataset(project, config.evaluation.final_dataset_id)
+        if config.evaluation.final_dataset_id
+        else None
+    )
+    if any(d and d["role"] == "final_evaluation" for d in (calibration, evaluation)):
+        raise ValueError(
+            "Final evaluation data cannot be used for calibration/tuning; select it in the held-out final evaluation field"
+        )
+    if final:
+        if final["role"] != "final_evaluation":
+            raise ValueError("Final evaluation requires a dataset with final_evaluation role")
+        if any(d and dataset_overlap(d, final) for d in (calibration, evaluation)):
+            raise ValueError(
+                "Final evaluation overlaps calibration/validation data; choose held-out data"
+            )
     overlap = []
     if calibration and evaluation:
-        left = {s["content_sha256"] for s in calibration["samples"]}
-        overlap = sorted(left & {s["content_sha256"] for s in evaluation["samples"]})
+        overlap = dataset_overlap(calibration, evaluation)
         if overlap and not config.evaluation.allow_calibration_reuse:
             raise ValueError(
                 "Calibration/evaluation samples overlap; choose independent data or explicitly allow reuse"
@@ -234,15 +370,19 @@ def dataset_pair(project, config):
     return {
         "calibration": calibration,
         "evaluation": evaluation,
+        "final_evaluation": final,
         "independent": bool(calibration and evaluation and not overlap),
-        "overlapping_batches": len(overlap),
+        "overlapping_batches": len(
+            [identity for identity in overlap if identity.startswith("batch:")]
+        ),
+        "overlapping_identities": len(overlap),
         "warning": "Reused calibration data is not independent evaluation" if overlap else None,
     }
 
 
 def availability(project, datasets):
     result = {}
-    for role in ("calibration", "evaluation"):
+    for role in ("calibration", "evaluation", "diagnostic", "final_evaluation"):
         item = (datasets or {}).get(role)
         if item:
             try:

@@ -150,7 +150,7 @@ def execute(request, folder):
             samples, report.input_samples = prepare_inputs(
                 reference.get_inputs(), config.inputs, count, folder / "inputs", config.benchmark
             )
-        for role in ("calibration", "evaluation"):
+        for role in ("calibration", "evaluation", "final_evaluation"):
             if report.datasets[role]:
                 report.warnings.extend(report.datasets[role]["warnings"])
         if report.datasets["warning"]:
@@ -165,7 +165,9 @@ def execute(request, folder):
         )
         if lossy and (not evaluation or not report.datasets["calibration"]):
             raise ValueError("Static quantization requires calibration and evaluation datasets")
-        if not evaluation and not report.datasets["calibration"]:
+        if not any(
+            report.datasets[key] for key in ("evaluation", "calibration", "final_evaluation")
+        ):
             report.datasets = None
         finish()
         begin("baseline", "CPU baseline; session creation is excluded from timed runs")
@@ -181,6 +183,16 @@ def execute(request, folder):
         )
         finish()
         if config.mode == "baseline":
+            from .task_evaluation import evaluate_single
+
+            report.baseline_evaluation = evaluate_single(
+                reference, evaluation, config.evaluation, progress
+            )
+            if report.datasets and report.datasets.get("final_evaluation"):
+                report.final_evaluation = evaluate_single(
+                    reference, report.datasets["final_evaluation"], config.evaluation, progress
+                )
+            finish()
             for name in PHASES[2:]:
                 report.phases[name] = "Skipped"
         else:
@@ -279,7 +291,7 @@ def execute(request, folder):
             from .task_evaluation import evaluate_task, quality_gate
 
             report.validation.task_quality = evaluate_task(
-                reference, candidate, evaluation, config.evaluation
+                reference, candidate, evaluation, config.evaluation, progress
             )
             report.validation.quality_gate = quality_gate(
                 report.validation.numerical_summary,
@@ -319,6 +331,14 @@ def execute(request, folder):
                 benchmark_inputs,
             )
             report.comparison = compare_benchmarks(report.baseline, report.optimized)
+            if (report.datasets or {}).get("final_evaluation"):
+                report.final_evaluation = evaluate_task(
+                    reference,
+                    candidate,
+                    report.datasets["final_evaluation"],
+                    config.evaluation,
+                    progress,
+                )
             finish()
         verify_artifact(project, artifact)
         report.status, report.success = "Succeeded", True

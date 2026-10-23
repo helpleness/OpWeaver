@@ -238,6 +238,7 @@ export type DatasetId = string | null;
 export type AllowCalibrationReuse = boolean;
 export type Task = "none" | "classification_top1";
 export type OutputName = string | null;
+export type FinalDatasetId = string | null;
 export type SchemaVersion11 = "1.0";
 export type MaxMeanAbsError = number | null;
 export type MaxAbsError = number | null;
@@ -345,6 +346,12 @@ export type DataAvailability = {
   [k: string]: unknown;
 } | null;
 export type PreprocessedArtifacts = ModelArtifact[];
+export type BaselineEvaluation = {
+  [k: string]: unknown;
+} | null;
+export type FinalEvaluation = {
+  [k: string]: unknown;
+} | null;
 
 export interface Experiment {
   schema_version?: SchemaVersion;
@@ -374,6 +381,8 @@ export interface Experiment {
   quantization?: Quantization;
   data_availability?: DataAvailability;
   preprocessed_artifacts?: PreprocessedArtifacts;
+  baseline_evaluation?: BaselineEvaluation;
+  final_evaluation?: FinalEvaluation;
 }
 export interface ExperimentConfig {
   schema_version?: SchemaVersion1;
@@ -459,6 +468,7 @@ export interface EvaluationConfig {
   allow_calibration_reuse?: AllowCalibrationReuse;
   task?: Task;
   output_name?: OutputName;
+  final_dataset_id?: FinalDatasetId;
   gates?: QualityGates;
 }
 export interface QualityGates {

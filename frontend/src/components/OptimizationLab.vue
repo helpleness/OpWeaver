@@ -22,6 +22,7 @@ import { metric, percent } from "../lab-types";
 import LatencyChart from "./LatencyChart.vue";
 import OliveWorkflow from "./OliveWorkflow.vue";
 import DatasetPanel from "./DatasetPanel.vue";
+import TaskQualityCard from "./TaskQualityCard.vue";
 const props = defineProps<{ desktop?: boolean }>();
 const emit = defineEmits<{ viewModel: [id: string]; importModel: [] }>();
 const lab = useLab(),
@@ -41,13 +42,6 @@ const sources = computed(() =>
   models.completed.filter((m) => m.artifact?.format === "onnx"),
 );
 const disabled = computed(() => lab.running || busy.value || lab.loading);
-const staticQuantization = computed(
-  () =>
-    lab.config.optimization.backend_id === "microsoft.olive" &&
-    lab.config.optimization.workflow?.passes.some(
-      (p) => p.enabled && p.type === "OnnxStaticQuantization",
-    ),
-);
 const canStart = computed(
   () =>
     !disabled.value &&
@@ -124,8 +118,15 @@ async function action(fn: () => Promise<unknown>) {
     busy.value = false;
   }
 }
-function prepareInputs() {
+function prepareInputs(reuseDataset = true) {
   const config = lab.config;
+  if (reuseDataset && config.evaluation.dataset_id) {
+    if (!config.benchmark.batch_size) {
+      config.benchmark.batch_size = null;
+      config.benchmark.batch_input = null;
+    }
+    return;
+  }
   if (config.inputs.mode === "random") {
     const values: Record<string, number[]> = {};
     for (const input of lab.source?.inputs ?? []) {
@@ -454,8 +455,8 @@ onUnmounted(() => clearInterval(timer));
             :prepare-inputs="prepareInputs"
           />
           <DatasetPanel
-            v-if="staticQuantization || lab.config.evaluation.dataset_id"
-            :prepare-inputs="prepareInputs"
+            v-if="lab.source"
+            :prepare-inputs="() => prepareInputs(false)"
             :desktop="desktop"
           />
           <div class="lab-form-grid">
@@ -632,7 +633,12 @@ onUnmounted(() => clearInterval(timer));
             }}</span
             ><span class="muted small"
               >{{ result.config.mode }} ·
-              {{ result.config.optimization.backend_id }} ·
+              {{
+                result.config.mode === "baseline"
+                  ? "onnxruntime.cpu"
+                  : result.config.optimization.backend_id
+              }}
+              ·
               {{
                 result.optimization?.backend_version ??
                 result.environment.onnxruntime
@@ -757,6 +763,11 @@ onUnmounted(() => clearInterval(timer));
           >
             {{ role }} data unavailable: {{ (state as any).reason }}
           </p>
+          <TaskQualityCard
+            :single="result.baseline_evaluation"
+            :paired="result.validation?.task_quality"
+            :final="result.final_evaluation"
+          />
           <nav class="lab-result-tabs">
             <button
               v-for="name in [

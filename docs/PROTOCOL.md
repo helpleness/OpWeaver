@@ -92,3 +92,9 @@ lab.dataset.create(project, config: DatasetConfig) → 已验证的数据集 man
 OptimizationConfig 可选 calibration_dataset_id；ExperimentConfig.evaluation 包含 dataset_id、allow_calibration_reuse、task/output_name、gates。ValidationResult 扩展 execution_valid/numerical_summary/quality_gate/task_quality；Experiment 扩展 datasets/quantization/preprocessed_artifacts/data_availability，旧 1.0 缺字段恢复默认值。Quality Gate failed 不等于执行 Failed。带标签 Top1 仅支持显式 [batch,classes] 输出；未配置任务不输出 accuracy。
 
 静态量化原生 DataConfig 仅由 Adapter 生成，固定使用受控产品模块；高级通用 JSON 不接受任意 user_script/data_config。lab.load 重新验证引用可用性，缺数据保留历史测量；lab.export 要求引用模型和数据仍完整。
+
+## P1-C1 数据与评价扩展
+
+沿用 lab.dataset.create/list/load。DatasetConfig.mode 新增 images，image 包含 manifest_path/root/input_name/class_mapping/batch_size/drop_last/provenance/preprocessing。preprocessing 明确 resize/center_crop/color/layout/scale/mean/std/dtype/interpolation/exif_transpose；完整格式见 P1C1_IMPLEMENTATION.md。role 新增 validation/diagnostic/final_evaluation，兼容 evaluation。manifest 的 dataset_version=2.0，保存 source_adapter/source_files/class_mapping/label_distribution/preprocessing/overlaps，旧快照仍可读取。
+
+ExperimentConfig.evaluation 新增可选 final_dataset_id。Experiment 新增 baseline_evaluation（baseline-only 原模型评价）与 final_evaluation（独立最终评价）；validation.task_quality 保留原字段并新增 Top5、两侧详细统计、accuracy_drop_percentage_points 和 accuracy_change_percent。baseline=0 时相对百分比为 null。calibration/evaluation 引用 final 角色或 final 与它们有可检测重叠均拒绝。diagnostic 目前只是数据用途，尚无诊断任务 RPC。

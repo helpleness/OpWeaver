@@ -118,6 +118,7 @@ export function defaultConfig(): ExperimentConfig {
       allow_calibration_reuse: false,
       task: "none",
       output_name: null,
+      final_dataset_id: null,
       gates: {
         schema_version: "1.0",
         max_mean_abs_error: null,

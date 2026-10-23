@@ -2,7 +2,7 @@
 
 **Visual AI Model Engineering IDE** — *Weave Models. Forge Kernels.*
 
-面向模型工程的本地桌面 IDE。当前完成 **P0-A Graph ↔ Code 双向协作**、**P0-B 真实模型导入/分析**、**P0-C Optimization Lab CPU 推理优化闭环**、**P1-A Microsoft Olive 本地工作流** 和 **P1-B ONNX 静态量化/数据集/质量评估**，保留已有图设计、训练和 Checkpoint 功能。
+面向模型工程的本地桌面 IDE。当前完成 **P0-A Graph ↔ Code 双向协作**、**P0-B 真实模型导入/分析**、**P0-C Optimization Lab CPU 推理优化闭环**、**P1-A Microsoft Olive 本地工作流**、**P1-B ONNX 静态量化/数据集/质量评估** 和 **P1-C1 本地图片数据/真实分类评估**，保留已有图设计、训练和 Checkpoint 功能。
 
 客户端：**Wails 2 + Go + Vue 3 + TypeScript + Vue Flow + Pinia + Monaco**。计算：**独立 Python Worker + PyTorch Eager/FX**。CPU 即可完成基础流程，不需要下载数据集。
 
@@ -149,3 +149,9 @@ docs/                    架构、协议、扩展、路线和验收说明
 真实 Olive OnnxStaticQuantization：MinMax / Entropy / Percentile、QDQ / QOperator、int8 / uint8、每通道及算子过滤。共享 NPZ 数据集支持输入映射、指纹、独立校准/评估；可选带标签 Top1 和用户 Quality Gate，量化误差与执行失败分开。所有输出复用同一 BenchmarkEngine，变慢会如实报告。
 
 导入 examples/quantization/quantization-cnn.onnx，在 Lab 添加静态量化 Pass，按 fixture.json 分别创建 calibration / evaluation 数据集（映射 image → pixels），运行、查看实际整数权重和误差、保存或导出。样例数据是合成测试数据，不代表真实任务精度。完整操作、能力矩阵、实验结果及限制见 [P1-B 实施记录](docs/P1B_IMPLEMENTATION.md)。
+
+## P1-C1 本地图片数据与分类评估
+
+Optimization Lab 新增 PNG/JPEG + CSV 分类数据集、显式标签→输出列映射、Resize/Center Crop/RGB-BGR/NCHW-NHWC/Normalize/DType/Batch 配置。支持 calibration、validation、diagnostic、held-out final evaluation 用途，保留 NPZ；原图和预处理全部本地快照，重叠检查包括重新分批后的逐例数据。可先独立运行原模型，再用真实 Olive INT8 在同一带标签验证集测量 Top1/Top5、正确/错误数量、百分点及相对变化，最终评估单独记录。
+
+离线导入 `examples/classification/color-classifier.onnx`，按 `fixture.json` 配置四个 CSV；模型和图片均为**合成测试夹具**，不能当成业务代表性验证。完整参数、回放和边界见 [P1-C1 实施说明](docs/P1C1_IMPLEMENTATION.md)。本轮按子阶段交付 C1；C2 逐层诊断、Graph Inspector 误差联动及 C3 敏感节点优化闭环尚未实现。

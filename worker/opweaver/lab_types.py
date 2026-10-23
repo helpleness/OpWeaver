@@ -2,7 +2,7 @@
 
 from typing import Literal
 
-from pydantic import Field
+from pydantic import Field, StrictInt
 
 from .ir import Spec
 from .model_artifact import ModelArtifact
@@ -90,17 +90,70 @@ class OptimizationConfig(Versioned):
     calibration_dataset_id: str | None = Field(default=None, pattern=r"^[0-9a-f]{32}$")
 
 
+DatasetRole = Literal["calibration", "evaluation", "validation", "diagnostic", "final_evaluation"]
+
+
+class ImagePreprocessing(Versioned):
+    resize: list[int] | None = None
+    center_crop: list[int] | None = None
+    color: Literal["RGB", "BGR"] = "RGB"
+    layout: Literal["NCHW", "NHWC"] = "NCHW"
+    scale: float = Field(default=1.0, allow_inf_nan=False)
+    mean: list[float] = Field(default_factory=lambda: [0.0, 0.0, 0.0])
+    std: list[float] = Field(default_factory=lambda: [1.0, 1.0, 1.0])
+    dtype: Literal["float32", "float16", "float64", "uint8"] = "float32"
+    interpolation: Literal["bilinear", "nearest", "bicubic"] = "bilinear"
+    exif_transpose: bool = True
+
+
+class ImageDatasetSource(Versioned):
+    manifest_path: str
+    root: str = ""
+    input_name: str
+    class_mapping: dict[str, StrictInt] = Field(max_length=10000)
+    batch_size: int = Field(default=1, ge=1, le=64)
+    drop_last: bool = False
+    provenance: Literal["not_established", "user_declared", "synthetic_test"] = "not_established"
+    preprocessing: ImagePreprocessing = Field(default_factory=ImagePreprocessing)
+
+
 class DatasetConfig(Versioned):
     name: str = Field(default="Dataset", min_length=1, max_length=120)
     source_model_id: str = Field(pattern=r"^[0-9a-f]{32}$")
-    role: Literal["calibration", "evaluation"] = "calibration"
-    mode: Literal["random", "npz"] = "npz"
+    role: DatasetRole = "calibration"
+    mode: Literal["random", "npz", "images"] = "npz"
     files: list[str] = Field(default_factory=list)
     mapping: dict[str, str] = Field(default_factory=dict)
     shapes: dict[str, list[int]] = Field(default_factory=dict)
     seed: int = Field(default=42, ge=0, le=2**32 - 513)
     count: int = Field(default=8, ge=1, le=512)
     label_key: str | None = None
+    image: ImageDatasetSource | None = None
+
+
+class DatasetManifest(Versioned):
+    id: str
+    name: str
+    format: str = "npz-batches-v1"
+    dataset_version: str = "2.0"
+    role: DatasetRole
+    config: DatasetConfig
+    model_hash: str
+    created_at: float
+    batch_count: int
+    example_count: int
+    example_count_scope: str
+    tensor_bytes: int
+    fingerprint: str
+    samples: list[dict]
+    warnings: list[str] = Field(default_factory=list)
+    source_adapter: dict = Field(default_factory=dict)
+    source_files: list[dict] = Field(default_factory=list)
+    class_mapping: dict[str, int] = Field(default_factory=dict)
+    label_distribution: dict[str, int] = Field(default_factory=dict)
+    observed_class_count: int | None = None
+    preprocessing: dict | None = None
+    overlaps: list[dict] = Field(default_factory=list)
 
 
 class QualityGates(Versioned):
@@ -115,6 +168,7 @@ class EvaluationConfig(Versioned):
     allow_calibration_reuse: bool = False
     task: Literal["none", "classification_top1"] = "none"
     output_name: str | None = None
+    final_dataset_id: str | None = Field(default=None, pattern=r"^[0-9a-f]{32}$")
     gates: QualityGates = Field(default_factory=QualityGates)
 
 
@@ -213,6 +267,8 @@ class Experiment(Versioned):
     quantization: dict | None = None
     data_availability: dict | None = None
     preprocessed_artifacts: list[ModelArtifact] = Field(default_factory=list)
+    baseline_evaluation: dict | None = None
+    final_evaluation: dict | None = None
 
 
 class OptimizationJob(Versioned):

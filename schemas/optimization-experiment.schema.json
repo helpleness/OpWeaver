@@ -285,6 +285,19 @@
           "default": null,
           "title": "Output Name"
         },
+        "final_dataset_id": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{32}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Final Dataset Id"
+        },
         "gates": {
           "$ref": "#/$defs/QualityGates"
         }
@@ -1251,6 +1264,32 @@
       },
       "title": "Preprocessed Artifacts",
       "type": "array"
+    },
+    "baseline_evaluation": {
+      "anyOf": [
+        {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Baseline Evaluation"
+    },
+    "final_evaluation": {
+      "anyOf": [
+        {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Final Evaluation"
     }
   },
   "required": [

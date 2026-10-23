@@ -66,6 +66,180 @@ async function complete(page: Page) {
   await expect(page.locator(".lab-error")).toHaveCount(0);
 }
 
+test("local PNG/JPEG classification: four split roles, real FP32/INT8 quality, portable export and restore", async ({
+  page,
+}) => {
+  test.setTimeout(180000);
+  const errors: string[] = [];
+  page.on("pageerror", (e) => errors.push(e.message));
+  const olive =
+    process.env.OPWEAVER_OLIVE_PYTHON ?? path.resolve("../.tools/olive-env");
+  test.skip(!fs.existsSync(olive), "Independent Olive environment required");
+  const directory = path.resolve("../examples/classification");
+  const fixture = JSON.parse(
+    fs.readFileSync(path.join(directory, "fixture.json"), "utf8"),
+  );
+  const { project } = await setup(page, "../classification/color-classifier");
+  await page.getByLabel("Timed iterations", { exact: true }).fill("15");
+  await page.getByLabel("Warmup iterations", { exact: true }).fill("2");
+  await page.getByLabel("Declared batch size", { exact: true }).fill("2");
+  await page.getByLabel("Batch input", { exact: true }).selectOption("image");
+  await page
+    .getByLabel("Dataset source", { exact: true })
+    .selectOption("images");
+  await page
+    .getByLabel("Image class mapping", { exact: true })
+    .fill(JSON.stringify(fixture.classes));
+  await page.getByLabel("Image resize", { exact: true }).fill("[10,10]");
+  await page.getByLabel("Image center crop", { exact: true }).fill("[8,8]");
+  await page
+    .getByLabel("Image dataset provenance", { exact: true })
+    .selectOption("synthetic_test");
+  for (const role of [
+    "calibration",
+    "validation",
+    "diagnostic",
+    "final_evaluation",
+  ]) {
+    await page.getByLabel("Dataset role", { exact: true }).selectOption(role);
+    await page
+      .getByLabel("Image CSV manifest", { exact: true })
+      .fill(path.join(directory, fixture.datasets[role]));
+    await page
+      .getByRole("button", { name: "Validate & save dataset", exact: true })
+      .click();
+    await expect(page.locator(".dataset-panel")).toContainText("Role " + role, {
+      timeout: 30000,
+    });
+    await expect(page.locator(".lab-error")).toHaveCount(0);
+  }
+  const datasets = await rpc(page, "lab.dataset.list", { project });
+  expect(datasets).toHaveLength(4);
+  expect(
+    datasets.every(
+      (d: any) => d.example_count === 12 && d.observed_class_count === 6,
+    ),
+  ).toBe(true);
+  const final = datasets.find((d: any) => d.role === "final_evaluation");
+  await expect(
+    page
+      .getByLabel("Calibration dataset", { exact: true })
+      .locator(`option[value="${final.id}"]`),
+  ).toHaveAttribute("disabled", "");
+  await expect(
+    page
+      .getByLabel("Evaluation dataset", { exact: true })
+      .locator(`option[value="${final.id}"]`),
+  ).toHaveAttribute("disabled", "");
+  await page
+    .getByText("Task evaluator & optional quality gates", { exact: true })
+    .click();
+  await page
+    .getByLabel("Task evaluator", { exact: true })
+    .selectOption("classification_top1");
+  await page
+    .getByLabel("Classification output name", { exact: true })
+    .fill("scores");
+  // No random-input dynamic shape is entered: actual image batches supply it.
+  await page
+    .getByRole("button", { name: "Run baseline only", exact: true })
+    .click();
+  await complete(page);
+  const quality = page.getByLabel("Classification task quality", {
+    exact: true,
+  });
+  await expect(quality).toContainText("12 labeled examples");
+  await expect(quality).toContainText("12 / 0");
+  await expect(quality).toContainText("100%");
+  let history = await rpc(page, "lab.history", { project });
+  const baseline = await rpc(page, "lab.load", { project, id: history[0].id });
+  expect(baseline.baseline_evaluation.correct).toBe(12);
+  expect(baseline.final_evaluation.top5_accuracy).toBe(1);
+  await expect(page.locator(".lab-result-title")).toContainText(
+    "onnxruntime.cpu",
+  );
+  await page
+    .getByLabel("Optimization backend", { exact: true })
+    .selectOption("microsoft.olive");
+  await page
+    .getByLabel("Olive Python environment", { exact: true })
+    .fill(olive);
+  await page
+    .getByRole("button", { name: "Save & detect environment", exact: true })
+    .click();
+  await expect(page.locator(".olive-environment")).toContainText("Available", {
+    timeout: 45000,
+  });
+  await page
+    .getByLabel("Olive pass type", { exact: true })
+    .selectOption("OnnxStaticQuantization");
+  await page.getByRole("button", { name: "Add pass", exact: true }).click();
+  await page.getByLabel("1 per_channel", { exact: true }).check();
+  await page
+    .getByRole("button", { name: "Validate & preview", exact: true })
+    .click();
+  await expect(page.locator(".olive-message")).toContainText("validated", {
+    timeout: 30000,
+  });
+  await page
+    .getByRole("button", { name: "Run optimization experiment", exact: true })
+    .click();
+  await complete(page);
+  await expect(quality).toContainText("percentage points");
+  await expect(quality).toContainText("relative change");
+  history = await rpc(page, "lab.history", { project });
+  const report = await rpc(page, "lab.load", { project, id: history[0].id });
+  expect(report.validation.task_quality.optimized_metrics.correct).toBe(12);
+  expect(report.validation.task_quality.optimized_top5_accuracy).toBe(1);
+  expect(report.final_evaluation.samples).toBe(12);
+  expect(report.datasets.independent).toBe(true);
+  expect(report.optimized.conditions_hash).toBe(
+    report.baseline.conditions_hash,
+  );
+  const destination = path.resolve("../test-results/classification-export");
+  fs.mkdirSync(destination, { recursive: true });
+  await page
+    .getByLabel("Experiment export directory", { exact: true })
+    .fill(destination);
+  await page
+    .getByRole("button", { name: "Export model & reports", exact: true })
+    .click();
+  await expect(page.locator(".lab-exported")).toContainText(report.id);
+  const exported = path.join(destination, `opweaver-${report.id}`);
+  expect(
+    fs.readFileSync(
+      path.join(exported, "datasets/evaluation/source/replay.csv"),
+      "utf8",
+    ),
+  ).toContain("image-0000.png,red");
+  expect(
+    fs.existsSync(
+      path.join(exported, "datasets/final_evaluation/manifest.json"),
+    ),
+  ).toBe(true);
+  fs.writeFileSync(
+    path.resolve("../test-results/p1c1-e2e-measurements.json"),
+    JSON.stringify({ project, baseline, report }, null, 2),
+  );
+  await page.reload();
+  await expect(
+    page.getByText("Worker connected", { exact: true }),
+  ).toBeVisible();
+  await page
+    .locator(".workspace-tabs")
+    .getByRole("button", { name: "Optimization", exact: true })
+    .click();
+  await expect(
+    page.getByLabel("Experiment history", { exact: true }),
+  ).toHaveValue(report.id);
+  await expect(quality).toContainText("12 / 0");
+  await expect(
+    page.getByLabel("Final evaluation dataset", { exact: true }),
+  ).toHaveValue(final.id);
+  await page.screenshot({ path: "../test-results/p1c1-classification.png" });
+  expect(errors).toEqual([]);
+});
+
 test("real static INT8 with mapped NPZ calibration, independent evaluation, quality gates and export", async ({
   page,
 }) => {

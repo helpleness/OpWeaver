@@ -4,6 +4,7 @@ import { mount } from "@vue/test-utils";
 import { createPinia, setActivePinia } from "pinia";
 import LossChart from "./LossChart.vue";
 import NodeInspector from "./NodeInspector.vue";
+import TaskQualityCard from "./TaskQualityCard.vue";
 import { useEditor } from "../stores/editor";
 
 vi.mock("../api", () => ({
@@ -12,6 +13,60 @@ vi.mock("../api", () => ({
     .mockResolvedValue({ valid: true, issues: [], order: [], tensors: {} }),
 }));
 beforeEach(() => setActivePinia(createPinia()));
+it("shows measured classification counts and separates percentage points from relative percent", () => {
+  const reference = {
+    status: "evaluated",
+    samples: 12,
+    classes: 6,
+    correct: 8,
+    incorrect: 4,
+    top1_accuracy: 2 / 3,
+    top5_accuracy: 1,
+    top5_status: "evaluated",
+  };
+  const candidate = {
+    ...reference,
+    correct: 12,
+    incorrect: 0,
+    top1_accuracy: 1,
+  };
+  const wrapper = mount(TaskQualityCard, {
+    props: {
+      paired: {
+        baseline_metrics: reference,
+        optimized_metrics: candidate,
+        accuracy_drop_percentage_points: -100 / 3,
+        accuracy_change_percent: 50,
+      },
+    },
+  });
+  expect(wrapper.text()).toContain("8 / 4");
+  expect(wrapper.text()).toContain("12 / 0");
+  expect(wrapper.text()).toContain("-33.333 percentage points");
+  expect(wrapper.text()).toContain("relative change 50%");
+});
+it("does not show fabricated accuracy or Top5 for unsupported class counts", () => {
+  const absent = mount(TaskQualityCard, {
+    props: { single: { status: "not_evaluated" } },
+  });
+  expect(absent.find("table").exists()).toBe(false);
+  const wrapper = mount(TaskQualityCard, {
+    props: {
+      single: {
+        status: "evaluated",
+        samples: 3,
+        classes: 2,
+        correct: 1,
+        incorrect: 2,
+        top1_accuracy: 1 / 3,
+        top5_accuracy: null,
+        top5_status: "not_applicable_fewer_than_5_classes",
+      },
+    },
+  });
+  expect(wrapper.text()).toContain("Top5 is not applicable");
+  expect(wrapper.findAll("tbody tr")[1].text()).toContain("—");
+});
 it("does not fabricate chart data before training", () => {
   const wrapper = mount(LossChart, { props: { metrics: [] } });
   expect(wrapper.find("polyline").exists()).toBe(false);
