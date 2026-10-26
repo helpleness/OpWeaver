@@ -110,7 +110,9 @@ class OnlineClusters:
             sorted(set().union(*(self.groups[c] for c in ranked[:top_clusters]))) if ranked else []
         )
 
-    def select(self, query, top_k=8, top_clusters=4, flat=False):
+    def select(self, query, top_k=8, top_clusters=4, flat=False, exclude=()):
         candidates = sorted(self.keys) if flat else self.candidates(query, top_clusters)
+        excluded = set(exclude)
+        candidates = [eid for eid in candidates if eid not in excluded]
         ranked = sorted(candidates, key=lambda e: (-float(query @ self.keys[e]), e))
         return ranked[:top_k], len(candidates)

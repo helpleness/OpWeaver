@@ -81,6 +81,12 @@ QUESTIONS = {
 
 
 def render(event: dict, template: int) -> str:
+    if template == 3:
+        from .paraphrases import heldout_event
+
+        return heldout_event(event)
+    if template not in (0, 1, 2):
+        raise ValueError(f"Unknown event template: {template}")
     f = {t: FIELDS[t][event["values"][t]] for t in TASKS}
     anchor = event["anchor"]
     if template == 0:
@@ -100,10 +106,14 @@ def render(event: dict, template: int) -> str:
 
 
 def question(event: dict, task: str, template: int) -> str:
+    if template == 3:
+        from .paraphrases import heldout_question
+
+        return heldout_question(event, task)
     return event["anchor"] + "，" + QUESTIONS[task][template]
 
 
-def build_tokenizer() -> dict:
+def build_tokenizer(extended=False) -> dict:
     # Closed, declared experimental vocabulary; no test labels are inspected.
     atoms = sorted(set(ANSWERS[1:] + PROJECTS + ORDINALS), key=lambda x: (-len(x), x))
     probe = {"anchor": "画册项目第1次讨论", "values": dict.fromkeys(TASKS, 0)}
@@ -114,6 +124,10 @@ def build_tokenizer() -> dict:
             )
         )
     )
+    if extended:
+        from .paraphrases import vocabulary_text
+
+        chars = sorted(set(chars) | set(vocabulary_text(probe)))
     vocab = ["<PAD>", "<CLS>", "<UNK>"] + sorted(set(atoms + chars))
     return {"vocab": vocab, "atoms": atoms, "max_length": 96}
 
@@ -144,6 +158,7 @@ def generate(
     eval_histories: int = 12,
     train_events: int = 32,
     test_events: int = 96,
+    extended_vocabulary: bool = False,
 ) -> dict:
     root.mkdir(parents=True, exist_ok=True)
     if max(train_events, test_events) + 8 > 256:
@@ -190,7 +205,8 @@ def generate(
             "events": len(rows),
         }
     (root / "tokenizer.json").write_text(
-        json.dumps(build_tokenizer(), ensure_ascii=False, indent=2), encoding="utf-8"
+        json.dumps(build_tokenizer(extended_vocabulary), ensure_ascii=False, indent=2),
+        encoding="utf-8",
     )
     (root / "manifest.json").write_text(
         json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8"

@@ -80,6 +80,49 @@ class MemoryStore:
         self.shape = tuple(shape)
         self.key_dim = key_dim
 
+    def enable_revisions(self):
+        """Add an auditable field-level revision log without modifying latent history."""
+        with self.db:
+            self.db.executescript("""
+                CREATE TABLE IF NOT EXISTS write_operations(
+                    event_id TEXT PRIMARY KEY REFERENCES events(event_id),
+                    decision TEXT NOT NULL);
+                CREATE TABLE IF NOT EXISTS field_revisions(
+                    old_id TEXT NOT NULL REFERENCES events(event_id),
+                    new_id TEXT NOT NULL REFERENCES events(event_id),
+                    field INTEGER NOT NULL CHECK(field BETWEEN 0 AND 5),
+                    PRIMARY KEY(old_id,new_id,field));
+            """)
+
+    def active_ids(self, owner, event_ids, field):
+        """Only explicit, owner-scoped edges supersede a field; time alone never does."""
+        exists = self.db.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='field_revisions'"
+        ).fetchone()
+        if not exists:
+            return list(event_ids)
+        superseded = {
+            row[0]
+            for row in self.db.execute(
+                "SELECT r.old_id FROM field_revisions r "
+                "JOIN events old ON old.event_id=r.old_id "
+                "JOIN events new ON new.event_id=r.new_id "
+                "WHERE old.owner=? AND new.owner=? AND r.field=?",
+                (owner, owner, field),
+            )
+        }
+        # A single-field correction does not restate/erase the other five fields.
+        out_of_scope = set()
+        for eid, decision in self.db.execute(
+            "SELECT o.event_id,o.decision FROM write_operations o "
+            "JOIN events e ON e.event_id=o.event_id WHERE e.owner=?",
+            (owner,),
+        ):
+            op = json.loads(decision)
+            if op.get("applied") and op.get("field") != field:
+                out_of_scope.add(eid)
+        return [eid for eid in event_ids if eid not in superseded and eid not in out_of_scope]
+
     def _index(self, owner):
         if owner not in self.cache:
             c = OnlineClusters(self.meta["threshold"], self.meta["max_members"])
@@ -100,6 +143,20 @@ class MemoryStore:
             self.cache[owner] = c
         return self.cache[owner]
 
+    def encode_memory(self, z):
+        if z.shape != self.shape:
+            raise ValueError("Bad payload shape")
+        return z.tobytes()
+
+    def decode_memory(self, raw):
+        return np.frombuffer(raw, dtype="<f2").reshape(self.shape).astype(np.float32)
+
+    def collate_memories(self, rows):
+        return np.stack(rows)
+
+    def add_metadata(self, record):
+        """Subclass hook, executed in the same transaction as the payload."""
+
     def add_many(self, records):
         owners = {r["owner"] for r in records}
         try:
@@ -107,7 +164,7 @@ class MemoryStore:
                 for r in records:
                     z = np.asarray(r["memory"], dtype="<f2")
                     key = np.asarray(r["key"], dtype="<f4")
-                    if z.shape != self.shape or key.shape != (self.key_dim,):
+                    if key.shape != (self.key_dim,):
                         raise ValueError("Bad payload shape")
                     if not np.isfinite(z).all() or not np.isfinite(key).all():
                         raise ValueError("Nonfinite memory")
@@ -115,8 +172,31 @@ class MemoryStore:
                     index.add(r["id"], key)
                     self.db.execute(
                         "INSERT INTO events VALUES (?,?,?,?,?)",
-                        (r["id"], r["owner"], r["timestamp"], z.tobytes(), key.tobytes()),
+                        (r["id"], r["owner"], r["timestamp"], self.encode_memory(z), key.tobytes()),
                     )
+                    self.add_metadata(r)
+                    if "operation" in r:
+                        self.db.execute(
+                            "INSERT INTO write_operations VALUES (?,?)",
+                            (r["id"], json.dumps(r["operation"], ensure_ascii=False)),
+                        )
+                        field = r["operation"].get("field")
+                        for old_id in r.get("supersedes", []):
+                            if (
+                                old_id == r["id"]
+                                or self.db.execute(
+                                    "SELECT 1 FROM events WHERE event_id=? AND owner=?",
+                                    (old_id, r["owner"]),
+                                ).fetchone()
+                                is None
+                            ):
+                                raise ValueError(
+                                    "Revision must reference a previous same-owner event"
+                                )
+                            self.db.execute(
+                                "INSERT INTO field_revisions VALUES (?,?,?)",
+                                (old_id, r["id"], field),
+                            )
                 for owner in owners:
                     index = self._index(owner)
                     index.merge_small()
@@ -141,8 +221,8 @@ class MemoryStore:
                 self.cache.pop(owner, None)
             raise
 
-    def retrieve(self, owner, query_key, top_k=8, top_clusters=4, flat=False):
-        return self._index(owner).select(query_key, top_k, top_clusters, flat)
+    def retrieve(self, owner, query_key, top_k=8, top_clusters=4, flat=False, exclude=()):
+        return self._index(owner).select(query_key, top_k, top_clusters, flat, exclude)
 
     def fetch(self, owner, event_ids):
         rows = []
@@ -154,13 +234,13 @@ class MemoryStore:
                 raise KeyError(f"No event in this owner's memory: {eid}")
             rows.append(
                 (
-                    np.frombuffer(row[0], dtype="<f2").reshape(self.shape).astype(np.float32),
+                    self.decode_memory(row[0]),
                     np.frombuffer(row[1], dtype="<f4").copy(),
                 )
             )
         if not rows:
             return np.zeros((1, *self.shape), np.float32), np.zeros((1, self.key_dim), np.float32)
-        return np.stack([r[0] for r in rows]), np.stack([r[1] for r in rows])
+        return self.collate_memories([r[0] for r in rows]), np.stack([r[1] for r in rows])
 
     def counts(self):
         return {

@@ -27,19 +27,22 @@ def run_evaluation(
     top_clusters=2,
     modes=("oracle", "clustered", "flat", "zero", "shuffled", "no_appraisal"),
     seed=901,
+    events=None,
+    store_path=None,
 ):
     seed_everything(seed)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model, tokenizer, _ = load_checkpoint(run / checkpoint, device)
     model.eval()
     version = writer_version(model, tokenizer.spec)
+    store_path = store_path or run / f"memory_{split}.sqlite"
     store = MemoryStore(
-        run / f"memory_{split}.sqlite",
+        store_path,
         version,
         (model.config.slots, model.config.dim),
         model.config.key_dim,
     )
-    events = load_events(run / "data", split)
+    events = events if events is not None else load_events(run / "data", split)
     by_owner = defaultdict(list)
     for e in events:
         if e["stored"]:
@@ -63,6 +66,21 @@ def run_evaluation(
         )
         summaries.extend(h.unbind())
         qkeys.extend(k.unbind())
+    reference_summaries, reference_keys = [], []
+    if any(m.startswith("reference_") for m in modes):
+        for start in range(0, count, 32):
+            subset = queries[start : start + 32]
+            h, k = model.encode_questions(
+                pad_tokens(
+                    [
+                        tokenizer.encode(question(e, t, e["reference_query_template"]))
+                        for e, t in subset
+                    ],
+                    device,
+                )
+            )
+            reference_summaries.extend(h.unbind())
+            reference_keys.extend(k.unbind())
     results = {
         "split": split,
         "checkpoint": checkpoint,
@@ -74,12 +92,15 @@ def run_evaluation(
     }
     examples = []
     for mode in modes:
+        mode_keys = reference_keys if mode == "reference_address" else qkeys
+        mode_summaries = reference_summaries if mode == "reference_summary" else summaries
         totals = defaultdict(int)
+        outcomes = []
         task_counts = defaultdict(lambda: [0, 0])
         elapsed = candidates_total = payload_total = 0
         mode_rng = random.Random(seed + 1)
         for i, (e, task) in enumerate(queries):
-            query = qkeys[i].cpu().numpy()
+            query = mode_keys[i].cpu().numpy()
             started = time.perf_counter()
             selected, candidates = store.retrieve(
                 e["owner"], query, top_clusters=top_clusters, flat=mode == "flat"
@@ -99,8 +120,8 @@ def run_evaluation(
             elif mode == "no_appraisal":
                 z[:, 2:4] = 0
             logits, _ = model.read(
-                summaries[i][None],
-                qkeys[i][None],
+                mode_summaries[i][None],
+                mode_keys[i][None],
                 torch.tensor(z[None], device=device),
                 torch.tensor(keys[None], device=device),
             )
@@ -108,6 +129,16 @@ def run_evaluation(
             elapsed += time.perf_counter() - started
             target = OFFSETS[task] + e["values"][task] if e["stored"] else 0
             correct = pred == target
+            outcomes.append(
+                {
+                    "event_id": e["id"],
+                    "task": task,
+                    "stored": e["stored"],
+                    "target": target,
+                    "prediction": pred,
+                    "support_found": e["id"] in selected,
+                }
+            )
             totals["correct"] += correct
             totals["present"] += e["stored"]
             totals["present_correct"] += correct and e["stored"]
@@ -144,8 +175,17 @@ def run_evaluation(
             "mean_payload_bytes": payload_total / count,
             "per_task_present_accuracy": {t: a / max(1, n) for t, (a, n) in task_counts.items()},
             "counts": dict(totals),
+            "outcomes": outcomes,
         }
-        print(json.dumps({"mode": mode, **results["modes"][mode]}), flush=True)
+        print(
+            json.dumps(
+                {
+                    "mode": mode,
+                    **{k: v for k, v in results["modes"][mode].items() if k != "outcomes"},
+                }
+            ),
+            flush=True,
+        )
     # Actual close/reopen verification, retaining exactly the same model and query.
     e, _ = queries[-1]
     q = qkeys[-1].cpu().numpy()
@@ -153,7 +193,7 @@ def run_evaluation(
     z_before, k_before = store.fetch(e["owner"], ids_before)
     store.close()
     reopened = MemoryStore(
-        run / f"memory_{split}.sqlite",
+        store_path,
         version,
         (model.config.slots, model.config.dim),
         model.config.key_dim,

@@ -64,12 +64,15 @@ def load_checkpoint(path, device):
 
 
 class Corpus:
-    def __init__(self, events, tokenizer):
+    def __init__(self, events, tokenizer, augment=False, consistency=False):
+        self.augment, self.consistency = augment, consistency
         self.events = {e["id"]: e for e in events}
         self.stored = [e for e in events if e["stored"]]
         self.by_owner = defaultdict(list)
         self.event_tokens = {}
         self.question_tokens = {}
+        self.event_views, self.question_views = {}, {}
+        augmentation_rng = random.Random(1127)
         for e in events:
             if e["stored"]:
                 self.by_owner[e["owner"]].append(e["id"])
@@ -78,6 +81,27 @@ class Corpus:
                 self.question_tokens[e["id"], task] = tokenizer.encode(
                     question(e, task, e["query_template"])
                 )
+            if augment:
+                from .paraphrases import augmented_event, augmented_question
+
+                self.event_views[e["id"]] = [self.event_tokens[e["id"]]] + [
+                    tokenizer.encode(augmented_event(e, augmentation_rng)) for _ in range(6)
+                ]
+                for task in TASKS:
+                    self.question_views[e["id"], task] = [self.question_tokens[e["id"], task]] + [
+                        tokenizer.encode(augmented_question(e, task, augmentation_rng))
+                        for _ in range(4)
+                    ]
+
+    def event_row(self, eid, rng):
+        return rng.choice(self.event_views[eid]) if self.augment else self.event_tokens[eid]
+
+    def question_row(self, e, task, rng):
+        return (
+            rng.choice(self.question_views[e["id"], task])
+            if self.augment
+            else self.question_tokens[e["id"], task]
+        )
 
     def candidates(self, e, rng, count=8):
         other = [eid for eid in self.by_owner[e["owner"]] if eid != e["id"]]
@@ -102,13 +126,14 @@ class Corpus:
             if absent:
                 valid[i, positive[i]] = False
             labels.append(0 if absent else OFFSETS[task] + e["values"][task])
-        return {
+        batch = {
             "event_tokens": pad_tokens(
-                [self.event_tokens[eid] for ids in candidates for eid in ids], device
+                [self.event_row(eid, rng) for ids in candidates for eid in ids], device
             ),
             "questions": pad_tokens(
-                [self.question_tokens[e["id"], t] for e, t in zip(selected, tasks)], device
+                [self.question_row(e, t, rng) for e, t in zip(selected, tasks)], device
             ),
+            "tasks": torch.tensor([TASKS.index(t) for t in tasks], device=device),
             "aux": torch.tensor(
                 [
                     [self.events[eid]["values"][t] for t in TASKS]
@@ -126,6 +151,14 @@ class Corpus:
             ),
             "query_context": torch.tensor([context_labels(e) for e in selected], device=device),
         }
+        if self.consistency:
+            batch["alternate_events"] = pad_tokens(
+                [self.event_row(e["id"], rng) for e in selected], device
+            )
+            batch["alternate_questions"] = pad_tokens(
+                [self.question_row(e, t, rng) for e, t in zip(selected, tasks)], device
+            )
+        return batch
 
 
 def context_labels(e):
@@ -133,6 +166,24 @@ def context_labels(e):
     # This is NOT a learned extraction claim from unrestricted language.
     ordinal = e.get("ordinal", e["anchor"].split("项目")[1].removesuffix("讨论"))
     return [PROJECTS.index(e["project"]), ORDINALS.index(ordinal)]
+
+
+def language_exposure(corpus, tokenizer):
+    event_seen, query_seen = set(), set()
+    for eid, tokens in corpus.event_tokens.items():
+        for row in corpus.event_views.get(eid, [tokens]):
+            event_seen.update(row)
+    for key, tokens in corpus.question_tokens.items():
+        for row in corpus.question_views.get(key, [tokens]):
+            query_seen.update(row)
+    return {
+        "event_token_ids": sorted(event_seen),
+        "query_token_ids": sorted(query_seen),
+        "event_symbols": [tokenizer.spec["vocab"][t] for t in sorted(event_seen)],
+        "query_symbols": [tokenizer.spec["vocab"][t] for t in sorted(query_seen)],
+        "augmented": corpus.augment,
+        "note": "Union of materialized training views; does not guarantee every view was sampled by the optimizer.",
+    }
 
 
 def forward_batch(model, batch):
@@ -152,6 +203,24 @@ def forward_batch(model, batch):
             + model.context_loss(qkey, batch["query_context"])
         ) / 2
         loss = loss + model.config.context_weight * context
+    intent, consistency = loss.new_zeros(()), loss.new_zeros(())
+    if model.config.intent_weight:
+        intent = F.cross_entropy(model.intent_head(summary).float(), batch["tasks"])
+        loss = loss + model.config.intent_weight * intent
+    if model.config.consistency_weight:
+        za, ka = model.encode_events(batch["alternate_events"])
+        ha, qa = model.encode_questions(batch["alternate_questions"])
+        rows = torch.arange(b, device=z.device)
+        zp, kp = zm[rows, batch["positive"]], km[rows, batch["positive"]]
+        consistency = (
+            (1 - F.cosine_similarity(zp.float(), za.float(), dim=-1)).mean()
+            + (1 - F.cosine_similarity(kp, ka)).mean()
+            + (1 - F.cosine_similarity(qkey, qa)).mean()
+        ) / 3
+        if model.config.intent_weight:
+            intent_alt = F.cross_entropy(model.intent_head(ha).float(), batch["tasks"])
+            loss = loss + model.config.intent_weight * intent_alt
+        loss = loss + model.config.consistency_weight * consistency
     return (
         loss,
         logits,
@@ -160,6 +229,8 @@ def forward_batch(model, batch):
             "route": float(route.detach()),
             "aux": float(aux.detach()),
             "context": float(context.detach()),
+            "intent": float(intent.detach()),
+            "consistency": float(consistency.detach()),
         },
     )
 
@@ -237,7 +308,7 @@ def stage_b(
     for step in range(1, steps + 1):
         es = [rng.choice(corpus.stored) for _ in range(batch_size)]
         tasks = [rng.choice(TASKS) for _ in es]
-        qt = pad_tokens([corpus.question_tokens[e["id"], t] for e, t in zip(es, tasks)], device)
+        qt = pad_tokens([corpus.question_row(e, t, rng) for e, t in zip(es, tasks)], device)
         with precision(device, amp):
             summary, qkeys = model.encode_questions(qt)
         detached_keys = qkeys.detach().float().cpu().numpy()
@@ -272,6 +343,11 @@ def stage_b(
                 torch.tensor(route_targets, device=device),
             )
             loss = F.cross_entropy(logits.float(), labels_t) + model.config.route_weight * route
+            if model.config.intent_weight:
+                loss = loss + model.config.intent_weight * F.cross_entropy(
+                    model.intent_head(summary).float(),
+                    torch.tensor([TASKS.index(t) for t in tasks], device=device),
+                )
         if not torch.isfinite(loss):
             raise FloatingPointError("Stage B loss is not finite")
         optimizer.zero_grad(set_to_none=True)
@@ -303,6 +379,9 @@ def main():
     p.add_argument("--max-members", type=int, default=32)
     p.add_argument("--top-clusters", type=int, default=2)
     p.add_argument("--no-amp", action="store_true")
+    p.add_argument("--paraphrases", action="store_true")
+    p.add_argument("--intent-bottleneck", action="store_true")
+    p.add_argument("--consistency-weight", type=float, default=0.0)
     p.add_argument("--address-source", choices=("slots", "cls"), default="cls")
     p.add_argument("--route-weight", type=float, default=1.0)
     p.add_argument(
@@ -325,16 +404,28 @@ def main():
         train_histories=args.train_histories,
         eval_histories=args.eval_histories,
         test_events=args.test_events,
+        extended_vocabulary=args.paraphrases,
     )
     tokenizer = Tokenizer(json.loads((data / "tokenizer.json").read_text(encoding="utf-8")))
     config = Config(len(tokenizer.ids))
     config.address_source, config.route_weight = args.address_source, args.route_weight
     config.context_weight = args.context_weight
+    config.intent_bottleneck = args.intent_bottleneck
+    config.intent_weight = 0.5 if args.intent_bottleneck else 0.0
+    config.consistency_weight = args.consistency_weight
     if args.small:
         config.dim, config.event_layers, config.query_layers, config.reader_layers = 128, 2, 1, 1
     model = MemoryModel(config).to(device)
-    train = Corpus(load_events(data, "train"), tokenizer)
-    validation = Corpus(load_events(data, "validation"), tokenizer)
+    train = Corpus(
+        load_events(data, "train"), tokenizer, args.paraphrases, bool(args.consistency_weight)
+    )
+    validation = Corpus(
+        load_events(data, "validation"), tokenizer, args.paraphrases, bool(args.consistency_weight)
+    )
+    (args.out / "language_exposure.json").write_text(
+        json.dumps(language_exposure(train, tokenizer), ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
     started = time.perf_counter()
     log_path = args.out / "training.jsonl"
 
