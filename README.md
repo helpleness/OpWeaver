@@ -2,7 +2,7 @@
 
 **Visual AI Model Engineering IDE** — *Weave Models. Forge Kernels.*
 
-面向模型工程的本地桌面 IDE。当前完成 **P0-A Graph ↔ Code 双向协作**、**P0-B 真实模型导入/分析**、**P0-C Optimization Lab CPU 推理优化闭环**、**P1-A Microsoft Olive 本地工作流**、**P1-B ONNX 静态量化/数据集/质量评估** 和 **P1-C1 本地图片数据/真实分类评估**，保留已有图设计、训练和 Checkpoint 功能。
+面向模型工程的本地桌面 IDE。当前完成 **P0-A Graph ↔ Code 双向协作**、**P0-B 真实模型导入/分析**、**P0-C Optimization Lab CPU 推理优化闭环**、**P1-A Microsoft Olive 本地工作流**、**P1-B ONNX 静态量化/数据集/质量评估**、**P1-C1 本地图片数据/真实分类评估** 和 **P1-C2 QDQ 逐层误差诊断/图联动**，保留已有图设计、训练和 Checkpoint 功能。
 
 客户端：**Wails 2 + Go + Vue 3 + TypeScript + Vue Flow + Pinia + Monaco**。计算：**独立 Python Worker + PyTorch Eager/FX**。CPU 即可完成基础流程，不需要下载数据集。
 
@@ -154,4 +154,10 @@ docs/                    架构、协议、扩展、路线和验收说明
 
 Optimization Lab 新增 PNG/JPEG + CSV 分类数据集、显式标签→输出列映射、Resize/Center Crop/RGB-BGR/NCHW-NHWC/Normalize/DType/Batch 配置。支持 calibration、validation、diagnostic、held-out final evaluation 用途，保留 NPZ；原图和预处理全部本地快照，重叠检查包括重新分批后的逐例数据。可先独立运行原模型，再用真实 Olive INT8 在同一带标签验证集测量 Top1/Top5、正确/错误数量、百分点及相对变化，最终评估单独记录。
 
-离线导入 `examples/classification/color-classifier.onnx`，按 `fixture.json` 配置四个 CSV；模型和图片均为**合成测试夹具**，不能当成业务代表性验证。完整参数、回放和边界见 [P1-C1 实施说明](docs/P1C1_IMPLEMENTATION.md)。本轮按子阶段交付 C1；C2 逐层诊断、Graph Inspector 误差联动及 C3 敏感节点优化闭环尚未实现。
+离线导入 `examples/classification/color-classifier.onnx`，按 `fixture.json` 配置四个 CSV；模型和图片均为**合成测试夹具**，不能当成业务代表性验证。完整参数、回放和边界见 [P1-C1 实施说明](docs/P1C1_IMPLEMENTATION.md)。
+
+## P1-C2 逐层量化诊断
+
+Optimization → Quantization diagnostics 选择已有 FP32 / QDQ INT8 / Diagnostic Dataset，配置批次、节点范围、Tensor数量、内存/磁盘预算和超时。真实 ORT1.31.0 `qdq_loss_debug` 采集、保守匹配与逐批统计提供 Activation/Weight Error 排名、覆盖率、双侧图定位/高亮和 Inspector；支持取消、历史恢复、资源缺失提示和 JSON/Markdown 导出。NPZ、多输入和动态 Shape 复用已有 Dataset Adapter。
+
+Node Name 相同不足以匹配；融合/替换/改名可能部分匹配，未可靠比较的指标为空。QOperator 当前明确不支持；工作内存预算不是进程总 RAM 限额；高误差不等于根因。完整契约、统计语义、资源边界及实测见 [P1-C2 实施说明](docs/P1C2_IMPLEMENTATION.md) 和 [验收记录](docs/VALIDATION.md)。C3 选点排除重新量化与自动敏感性优化尚未实现。

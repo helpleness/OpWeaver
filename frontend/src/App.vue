@@ -41,6 +41,8 @@ import ModelBrowser from "./components/ModelBrowser.vue";
 import ModelInspector from "./components/ModelInspector.vue";
 import OptimizationLab from "./components/OptimizationLab.vue";
 import { useLab } from "./stores/lab";
+import { useDiagnostics } from "./stores/diagnostics";
+import type { DiagnosticRecord, DiagnosticReport } from "./diagnostic-types";
 import { useModels } from "./stores/models";
 import { useCode } from "./stores/code";
 import NodeInspector from "./components/NodeInspector.vue";
@@ -51,6 +53,17 @@ const editor = useEditor();
 const code = useCode();
 const models = useModels();
 const lab = useLab();
+const diagnostics = useDiagnostics();
+async function viewDiagnostic(
+  report: DiagnosticReport,
+  row: DiagnosticRecord,
+  side: "fp32" | "quantized",
+  low: number | null,
+  high: number | null,
+) {
+  await models.openDiagnostic(report, row, side, low, high);
+  workspace.value = "Model Imports";
+}
 const modelBrowser = ref<InstanceType<typeof ModelBrowser>>();
 const modelInspectorWidth = ref(340);
 const importedAnalysis = computed(() =>
@@ -229,7 +242,14 @@ async function loadExample(name: string) {
   );
 }
 function askDiscard(action: () => void) {
-  if (editor.running || code.running || models.running || lab.running) return;
+  if (
+    editor.running ||
+    code.running ||
+    models.running ||
+    lab.running ||
+    diagnostics.running
+  )
+    return;
   if ((editor.dirty || code.dirty) && editor.projectPath) {
     deferredAction = action;
     modal.value = "discard";
@@ -424,7 +444,8 @@ function beforeUnload(event: BeforeUnloadEvent) {
     code.dirty ||
     code.running ||
     models.running ||
-    lab.running
+    lab.running ||
+    diagnostics.running
   ) {
     event.preventDefault();
     event.returnValue = "";
@@ -432,7 +453,9 @@ function beforeUnload(event: BeforeUnloadEvent) {
 }
 onMounted(() => {
   unsubscribe = subscribe((event) => {
-    if (event.event === "lab.task" && event.data?.id) {
+    if (event.event === "diagnostic.task" && event.data?.id) {
+      void diagnostics.accept(event.data).catch((e) => showError(String(e)));
+    } else if (event.event === "lab.task" && event.data?.id) {
       void lab.accept(event.data).catch((e) => showError(String(e)));
     } else if (event.event === "model.task" && event.data?.id) {
       void models.accept(event.data).catch((e) => showError(String(e)));
@@ -464,6 +487,7 @@ onMounted(() => {
       }
     } else if (event.event === "worker.exited") {
       lab.workerExited();
+      diagnostics.workerExited();
       if (models.running && models.job) {
         models.job.state = "FAILED";
         models.error =
@@ -546,7 +570,8 @@ onUnmounted(() => {
             editor.running ||
             code.running ||
             models.running ||
-            lab.running
+            lab.running ||
+            diagnostics.running
           "
           @click="showNew()"
         >
@@ -558,7 +583,8 @@ onUnmounted(() => {
             editor.running ||
             code.running ||
             models.running ||
-            lab.running
+            lab.running ||
+            diagnostics.running
           "
           @click="openProject"
         >
@@ -591,6 +617,7 @@ onUnmounted(() => {
             busy ||
             editor.running ||
             lab.running ||
+            diagnostics.running ||
             ['Model Imports', 'Optimization'].includes(workspace)
           "
           @click="runForward"
@@ -615,6 +642,7 @@ onUnmounted(() => {
             code.running ||
             code.readOnly ||
             lab.running ||
+            diagnostics.running ||
             ['Model Imports', 'Optimization'].includes(workspace)
           "
           @click="train()"
@@ -821,6 +849,10 @@ onUnmounted(() => {
           /><OptimizationLab
             v-else-if="workspace === 'Optimization'"
             :desktop="appInfo?.desktop"
+            @view-diagnostic="
+              (report, row, side, low, high) =>
+                perform(() => viewDiagnostic(report, row, side, low, high))
+            "
             @import-model="showModelImport"
             @view-model="
               (id) =>

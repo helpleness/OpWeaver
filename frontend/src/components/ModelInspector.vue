@@ -10,6 +10,7 @@ import {
 } from "lucide-vue-next";
 import { useModels } from "../stores/models";
 import { bytesText, shapeText, type TensorInfo } from "../model-types";
+import DiagnosticDetails from "./DiagnosticDetails.vue";
 const models = useModels();
 const emit = defineEmits<{ openPython: [] }>();
 const report = computed(() => models.report);
@@ -24,6 +25,25 @@ const node = computed(() =>
 const detail = computed(
   () => (node.value?.details as Record<string, any>) ?? {},
 );
+const diagnosticRows = computed(() => {
+  const context = models.diagnosticContext,
+    id = report.value?.artifact.id;
+  if (!context || !id || !models.selectedNode) return [];
+  const side =
+    id === context.report.models.fp32?.id
+      ? "fp32_node_id"
+      : id === context.report.models.quantized?.id
+        ? "quantized_node_id"
+        : null;
+  return side
+    ? context.report.records.filter(
+        (r) =>
+          r[side] === models.selectedNode ||
+          (side === "quantized_node_id" &&
+            r.quantized_tensor_producer_id === models.selectedNode),
+      )
+    : [];
+});
 const nodeInputs = computed(() =>
   detail.value.input_tensors
     ? (Object.values(detail.value.input_tensors) as TensorInfo[])
@@ -106,6 +126,11 @@ const relatedWarnings = computed(
       </p>
     </div>
     <template v-else>
+      <DiagnosticDetails
+        v-if="models.diagnosticContext && diagnosticRows.length"
+        :rows="diagnosticRows"
+        :diagnostic-id="models.diagnosticContext.report.id"
+      />
       <details
         v-if="report.quantization?.present"
         class="model-detail-section"

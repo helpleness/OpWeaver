@@ -16,6 +16,7 @@ const props = defineProps<{
   id: string;
   selected?: boolean;
   analysis?: AnalysisNode;
+  diagnosticLevel?: string;
 }>();
 const editor = useEditor();
 const node = computed(() =>
@@ -72,12 +73,14 @@ const summary = computed(() => {
 <template>
   <div
     class="operator-node"
+    :data-diagnostic-level="diagnosticLevel"
     :style="{
       minHeight: `${Math.max(94, 70 + (Math.max(node?.inputs?.length ?? 0, node?.outputs?.length ?? 0) - 1) * 24)}px`,
     }"
     :class="[
       { selected, invalid: errors.length > 0 },
       op?.category?.toLowerCase(),
+      diagnosticLevel ? `diagnostic-${diagnosticLevel}` : '',
     ]"
     :title="
       analysis
@@ -106,6 +109,13 @@ const summary = computed(() => {
             ? "shape unknown"
             : "shape pending"
       }}<span>{{ tensor?.dtype ?? "—" }}</span>
+    </div>
+    <div v-if="diagnosticLevel" class="diagnostic-node-badge">
+      {{
+        diagnosticLevel === "unavailable"
+          ? "Not comparable"
+          : `${diagnosticLevel} MAE · relative`
+      }}
     </div>
     <template v-for="(port, index) in node?.inputs" :key="`in-${port.name}`">
       <Handle
@@ -138,3 +148,34 @@ const summary = computed(() => {
     </div>
   </div>
 </template>
+<style scoped>
+.diagnostic-low {
+  border-color: #408574;
+}
+.diagnostic-medium {
+  border-color: #ba9854;
+}
+.diagnostic-high {
+  border-color: #d78299;
+  box-shadow: 0 0 16px #d782991c;
+}
+.diagnostic-unavailable {
+  border-color: #667085;
+  border-style: dashed;
+}
+.diagnostic-node-badge {
+  color: #9eacbc;
+  font-size: 9px;
+  padding: 3px 11px 5px;
+  text-transform: capitalize;
+}
+.diagnostic-low .diagnostic-node-badge {
+  color: #8ed1b6;
+}
+.diagnostic-medium .diagnostic-node-badge {
+  color: #ddc083;
+}
+.diagnostic-high .diagnostic-node-badge {
+  color: #efabc0;
+}
+</style>

@@ -97,4 +97,18 @@ OptimizationConfig 可选 calibration_dataset_id；ExperimentConfig.evaluation �
 
 沿用 lab.dataset.create/list/load。DatasetConfig.mode 新增 images，image 包含 manifest_path/root/input_name/class_mapping/batch_size/drop_last/provenance/preprocessing。preprocessing 明确 resize/center_crop/color/layout/scale/mean/std/dtype/interpolation/exif_transpose；完整格式见 P1C1_IMPLEMENTATION.md。role 新增 validation/diagnostic/final_evaluation，兼容 evaluation。manifest 的 dataset_version=2.0，保存 source_adapter/source_files/class_mapping/label_distribution/preprocessing/overlaps，旧快照仍可读取。
 
-ExperimentConfig.evaluation 新增可选 final_dataset_id。Experiment 新增 baseline_evaluation（baseline-only 原模型评价）与 final_evaluation（独立最终评价）；validation.task_quality 保留原字段并新增 Top5、两侧详细统计、accuracy_drop_percentage_points 和 accuracy_change_percent。baseline=0 时相对百分比为 null。calibration/evaluation 引用 final 角色或 final 与它们有可检测重叠均拒绝。diagnostic 目前只是数据用途，尚无诊断任务 RPC。
+ExperimentConfig.evaluation 新增可选 final_dataset_id。Experiment 新增 baseline_evaluation（baseline-only 原模型评价）与 final_evaluation（独立最终评价）；validation.task_quality 保留原字段并新增 Top5、两侧详细统计、accuracy_drop_percentage_points 和 accuracy_change_percent。baseline=0 时相对百分比为 null。calibration/evaluation 引用 final 角色或 final 与它们有可检测重叠均拒绝。C2 新增下述独立诊断 RPC。
+
+## P1-C2 诊断 API
+
+| 方法 | 参数 | 结果 |
+|---|---|---|
+| diagnostic.start | project/config: DiagnosticConfig | 独立异步任务，默认 CPU EP |
+| diagnostic.status / stop | id | 任务快照 / 终止诊断子进程 |
+| diagnostic.history | project | 摘要；恢复中断状态并清理临时文件 |
+| diagnostic.load | project/id | DiagnosticResult 1.0 + 当前资源 availability |
+| diagnostic.export | project/id/directory | 新目录的 JSON/Markdown/日志，不重新执行模型 |
+
+`diagnostic.task` 采用现有任务信封，独立路由，含 state/status/phase/progress/logs/matching_summary/result。不替换训练、导入或 Lab job。Go 校验已保存项目；Python 验证32位ID、路径、Artifact Hash、Diagnostic Dataset 角色及配置预算。任务与其他计算/导入互斥。
+
+DiagnosticConfig/Result 详见 `schemas/quantization-diagnostic.schema.json` 和 P1C2_IMPLEMENTATION.md；max_samples 是保存批次，不是单张图片。两侧中间结果只在子进程内短暂持有，RPC 仅传统计和必要元数据。source experiment ID、原始/候选图节点ID、匹配证据和环境随记录保存；历史统计与当前资源可用性分开。

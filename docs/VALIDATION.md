@@ -1,4 +1,57 @@
-# 验收记录：P1-C1、P1-B、P1-A、P0-C、P0-B、P0-A 与已有基线
+# 验收记录：P1-C2、P1-C1、P1-B、P1-A、P0-C、P0-B、P0-A 与已有基线
+
+## P1-C2 验收（2026-10-23，UTC+8）
+
+已完成真实 QDQ 逐层激活采集、保守 Tensor 匹配、逐批误差与聚合、基础权重误差、独立任务资源控制/持久化/导出、双侧图定位和 Inspector。实施与边界见 [P1C2_IMPLEMENTATION.md](P1C2_IMPLEMENTATION.md)。下文 C1 的“C2尚未实现”是历史阶段记录。C3 选点重新量化尚未实现。
+
+开发前运行原有全量检查：Python **160 passed**、前端 **26 passed**、Go/vet、TypeScript/Vite通过，日志 `test-results/p1c2-baseline.log`。实际 API 验证来自已安装 ORT **1.31.0** 的四个 qdq_loss_debug helper，而非假定其他版本签名；Worker ONNX1.22.0/NumPy2.5.0，独立 Olive0.13.0 环境保持不变。
+
+| 检查 | 最终实际结果 |
+|---|---|
+| Python | **185 passed，0 skip**，234.18s；新增25项真实诊断/资源测试，原有160项保留 |
+| 报告补充复验 | **18 passed**；Markdown新增批次/语义/不可匹配理由后重跑诊断测试文件 |
+| 前端 | **32 passed**；排序、筛选、阈值、独立事件/迟到事件/断连/恢复及图引用 |
+| TypeScript / Vite / Ruff | 通过；67个Python文件；保留既有 bundle chunk 提示 |
+| Go | **9 tests / 3 packages**，真实 Worker API→Olive静态量化→诊断/导出集成及vet通过；主包72.481s |
+| E2E | **13 passed，4.9m**；既有12条全部保留，新增真实QDQ诊断到排名、双图、权重、导出和重载 |
+| 最终图定位修复 | 新增节点位于画布中心区域的几何断言，诊断完整 E2E **1 passed**；连续拖动专项 **1 passed**，前端32及TypeScript/Vite再次通过 |
+| Windows amd64 | Wails生产构建、原生运行、真实诊断、双图/Inspector、目录导出、关闭重启恢复通过 |
+
+全量 Python/前端日志 `test-results/p1c2-regression.log`；该首次脚本在测试夹具的两处 TypeScript 类型检查处停止，修正后前端32、TypeScript/Vite及后续Go/vet均重新通过，没有省略失败。Go日志 `p1c2-go.log`，E2E `p1c2-e2e-full.log`，最终定位专项 `p1c2-focus-e2e.log`，拖动专项 `p1c2-drag-recheck.log`；最后生产构建日志 `p1c2-final-build.log`。没有声称远程CI或干净电脑安装已验证。
+
+新增后端测试覆盖：真实ORT instrumentation与捕获数值、源模型Hash不变、QDQ pre/post、节点改名仍匹配、Tensor改名不猜测、算子替换与上游不匹配、已知数值指标/零向量/空/NaN/Inf/shape/dtype/溢出、元素加权与逐批平均区别、per-channel及INT32 bias、多输入动态batch(2/3/1)、实际部分feed非有限输出、Max Samples/Tensors、节点范围、工作内存/磁盘预检、原生ORT运行中取消/硬超时/异常退出及临时清理、中断恢复、模型篡改、输入不兼容、QOperator明确失败、final用途与重叠隔离、缺资源保留统计、历史/JSON/Markdown导出。
+
+### C2 Windows 原生实测
+
+在原项目 `projects/model-mvkdmssb` 使用既有 FP32 **0bf1c1e8ba7345c19ebdbb9da138a8ed** 和既有 C1 三Pass QDQ **54a41e203cc243d69b717b4c167ece45**（源实验 **c0881bb039ca400594f42654aa960391**）。未重新量化或覆盖旧模型。
+
+通过既有 Dataset Adapter 预先准备 diagnostic 快照 **af54bf2809f84c0286b173d6a5fd2e06**，原生表单选择该已有数据；未声称本轮通过原生界面创建它。12张独立PNG/JPEG、6批、每批2、RGB/NCHW、Resize8×8/无crop、scale1/255、六类显式映射、synthetic_test，指纹 `3cdf25e5637decc6d664a3d29cfa8a51f91a5059a753527ccb133c2b1c0d7956`。模型与图片均为合成测试夹具，不代表生产分布。
+
+原生设置 **4批 / 8例**、MaxTensors32、工作内存128MiB/临时磁盘512MiB、Timeout180s、权重开启，点击 Run layer diagnostic。新诊断 **126215c3ea9249228ca55ad7617c5cfb**，Succeeded。实际采集3个FP32输出+4个QDQ输出，4批指纹/顺序与预处理相同。UI真实进度区、持久化逐批 capture/weights 日志可查看；该小模型很快完成，未人为延迟或生成虚假百分比。
+
+| Activation Tensor | 状态 | MAE | RMSE | Max absolute | Cosine |
+|---|---|---:|---:|---:|---:|
+| features / Conv | Matched，4/4批 | 0.000815001006 | 0.000941349114 | 0.001614809036 | 0.999998436206 |
+| positive / Relu | Matched，4/4批 | 0.000815001006 | 0.000941349114 | 0.001614809036 | 0.999998436206 |
+| pooled / GlobalAveragePool | Matched，4/4批 | 0.000140773753 | 0.000174082553 | 0.000386834145 | 0.999999980901 |
+| flat / Flatten | Partially Matched | 不可用 | 不可用 | 不可用 | 不可用 |
+| scores / Gemm | Partially Matched | 不可用 | 不可用 | 不可用 | 不可用 |
+
+覆盖率 **3/5=60%**。原来的 Peephole Pass 将 Flatten 替换为 Reshape；未实现其等价性证明，因此 flat 的生产者契约失败，下游 scores 同样保守扣留误差。UI表格和Inspector不填零，不把部分匹配冒充完整诊断。单个 features 实际捕获 `[384]`，原图推断 `['B',3,8,8]`，每批绑定 `[2,3,8,8]`，均在Inspector可查看。
+
+独立 Weight Error：stem_weight MAE=0；head_weight **0.0003936998546** / RMSE **0.0005567756739** / max **0.0007873997092**；head_bias(INT32) MAE **0.00000800192356**。3条均Matched，per-channel scale/zero-point与axis保留；不能把零误差权重推断为整个节点无激活误差。
+
+原生点击第一名分别定位 FP32 `onnx_0` 与 QDQ计算节点 `onnx_5`，画布居中/选中/颜色、对应DQ Tensor与Inspector统计均通过。原生验收发现保留旧训练面板后画布初始高度会变化，修复为按最终视口尺寸恢复显式定位；在最终构建中两侧再次复验，E2E新增几何断言。未重建第二套画布。
+
+实际工作空间估计 **46,128 B**、每批两侧合计捕获 **7,728 B**、观测临时磁盘峰值 **11,015 B**，结束temporary清理成功。工作空间估计**不等于总进程RAM峰值**；模型解析/Session/kernel内存不在该预算中。诊断内部耗时约 **0.193679s**，包含instrumentation/Session创建，不是Benchmark。
+
+原生 Export diagnostic report → Windows目录选择器 → `test-results/opweaver-diagnostic-126215c3ea9249228ca55ad7617c5cfb/`：report.json **79,260 B**、report.md **45,804 B**及stdout/stderr。JSON/Markdown含两侧模型/来源实验/量化配置、数据指纹/预处理、配置/环境/覆盖率、独立激活和权重、未匹配原因及限制；没有原始激活数组。独立重新执行同一配置，保存的全部Layer Error Records、matching summary和捕获元数据与原生结果一致（Schema默认版本字段归一化），两侧源模型Hash复验通过；证据 `test-results/p1c2-native-replay.json`。
+
+关闭、重新启动最终程序后，原诊断ID/配置4批/60%/排名恢复，模型和数据可用，图定位继续可用。原来Synced五节点设计图、训练 `139f2860`（30epochs/480steps/loss0.0564）、C1分类实验/旧导入均保留。导出后再次关闭重启验证结果保留。
+
+最终 exe：`build/bin/OpWeaverStudio.exe`，**16,702,976 B**，2026-10-23 **20:23:10**，SHA256 **2a8bc71cba1921207d6f1b273c20ea72f39b6116eb1bf0d61fc0f09e56d75647**。随包Worker复制已完成；Python/PyTorch/Pillow及独立Olive仍为外部运行时。
+
+另一个由真实Olive单StaticQuantization Pass产生的QDQ在E2E中为 **5/5=100%**，2批4例；说明覆盖率取决于所选实际图，不是固定示例值。当前不支持QOperator、自定义/控制流子图、任意融合/改名证明、GPU/INT4/LLM及C3自动优化。高误差只提示进一步调查；没有根因或业务精度改善承诺。
 
 ## P1-C1 验收（2026-10-23，UTC+8）
 

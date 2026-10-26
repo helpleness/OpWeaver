@@ -3,6 +3,7 @@
 import json
 from pathlib import Path
 
+from opweaver.diagnostic_types import DiagnosticResult
 from opweaver.examples import mlp, residual
 from opweaver.ir import Graph
 from opweaver.lab_types import Experiment
@@ -23,6 +24,7 @@ for name, model in [
     ("source-mapping", SourceMapping),
     ("onnx-report", OnnxReport),
     ("optimization-experiment", Experiment),
+    ("quantization-diagnostic", DiagnosticResult),
 ]:
     (root / "schemas" / f"{name}.schema.json").write_text(
         json.dumps(model.model_json_schema(), indent=2) + "\n", encoding="utf-8"

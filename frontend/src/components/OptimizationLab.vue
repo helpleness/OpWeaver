@@ -23,8 +23,31 @@ import LatencyChart from "./LatencyChart.vue";
 import OliveWorkflow from "./OliveWorkflow.vue";
 import DatasetPanel from "./DatasetPanel.vue";
 import TaskQualityCard from "./TaskQualityCard.vue";
+import DiagnosticsPanel from "./DiagnosticsPanel.vue";
+import { useDiagnostics } from "../stores/diagnostics";
+import type { DiagnosticRecord, DiagnosticReport } from "../diagnostic-types";
 const props = defineProps<{ desktop?: boolean }>();
-const emit = defineEmits<{ viewModel: [id: string]; importModel: [] }>();
+const emit = defineEmits<{
+  viewModel: [id: string];
+  importModel: [];
+  viewDiagnostic: [
+    report: DiagnosticReport,
+    row: DiagnosticRecord,
+    side: "fp32" | "quantized",
+    low: number | null,
+    high: number | null,
+  ];
+}>();
+const diagnostics = useDiagnostics();
+function viewDiagnostic(
+  report: DiagnosticReport,
+  row: DiagnosticRecord,
+  side: "fp32" | "quantized",
+  low: number | null,
+  high: number | null,
+) {
+  emit("viewDiagnostic", report, row, side, low, high);
+}
 const lab = useLab(),
   models = useModels(),
   editor = useEditor();
@@ -48,7 +71,8 @@ const canStart = computed(
     !!lab.source &&
     !!capability.value?.available &&
     !editor.running &&
-    !models.running,
+    !models.running &&
+    !diagnostics.running,
 );
 const comparison = computed(
   () => result.value?.comparison as Record<string, any> | null,
@@ -227,7 +251,27 @@ onUnmounted(() => clearInterval(timer));
         <RefreshCw :size="14" />
       </button>
     </header>
-    <div v-if="!editor.projectPath || !sources.length" class="lab-empty">
+    <nav class="lab-mode-tabs" aria-label="Optimization Lab modes">
+      <button
+        :class="{ active: !diagnostics.showPanel }"
+        @click="diagnostics.showPanel = false"
+      >
+        Benchmark & datasets
+      </button>
+      <button
+        :class="{ active: diagnostics.showPanel }"
+        :disabled="!editor.projectPath || lab.running"
+        @click="diagnostics.showPanel = true"
+      >
+        Quantization diagnostics
+      </button>
+    </nav>
+    <DiagnosticsPanel
+      v-if="diagnostics.showPanel"
+      :desktop="desktop"
+      @view-node="viewDiagnostic"
+    />
+    <div v-else-if="!editor.projectPath || !sources.length" class="lab-empty">
       <FlaskConical :size="38" />
       <h2>Measure. Optimize. Verify.</h2>
       <p>
@@ -1160,6 +1204,22 @@ onUnmounted(() => clearInterval(timer));
   </section>
 </template>
 <style scoped>
+.lab-mode-tabs {
+  display: flex;
+  gap: 6px;
+  padding: 7px 20px;
+  border-bottom: 1px solid #293747;
+  background: #141d2b;
+}
+.lab-mode-tabs button {
+  font-size: 11px;
+  color: #91a6bd;
+}
+.lab-mode-tabs button.active {
+  background: #29374d;
+  color: #c3dbe9;
+  border-color: #547189;
+}
 .quant-quality-summary {
   margin: 12px 0;
   padding: 15px 18px;

@@ -3,6 +3,11 @@ import { defineStore } from "pinia";
 import { rpc } from "../api";
 import { useEditor } from "./editor";
 import type { ModelJob, OnnxReport } from "../model-types";
+import {
+  errorLevel,
+  type DiagnosticRecord,
+  type DiagnosticReport,
+} from "../diagnostic-types";
 
 export const useModels = defineStore("models", () => {
   const editor = useEditor();
@@ -11,6 +16,60 @@ export const useModels = defineStore("models", () => {
   const job = ref<ModelJob | null>(null);
   const selectedNode = ref<string | null>(null);
   const subgraphKey = ref("");
+  const diagnosticContext = ref<{
+    report: DiagnosticReport;
+    low: number | null;
+    high: number | null;
+  } | null>(null);
+  const focusRequest = ref<{
+    modelId: string;
+    nodeId: string;
+    revision: number;
+  } | null>(null);
+  const diagnosticBadges = computed(() => {
+    const context = diagnosticContext.value,
+      current = report.value?.artifact.id;
+    const badges: Record<string, string> = {};
+    if (!context || !current) return badges;
+    const side =
+      context.report.models.fp32?.id === current
+        ? "fp32_node_id"
+        : context.report.models.quantized?.id === current
+          ? "quantized_node_id"
+          : null;
+    if (!side) return badges;
+    const severity = ["low", "medium", "high", "unavailable"];
+    for (const row of context.report.records.filter(
+      (r) => r.kind === "activation",
+    )) {
+      const id = row[side];
+      if (!id) continue;
+      const level = errorLevel(row, context.low, context.high);
+      if (!badges[id] || severity.indexOf(level) > severity.indexOf(badges[id]))
+        badges[id] = level;
+    }
+    return badges;
+  });
+  async function openDiagnostic(
+    result: DiagnosticReport,
+    row: DiagnosticRecord,
+    side: "fp32" | "quantized",
+    low: number | null,
+    high: number | null,
+  ) {
+    const modelId = result.models[side]?.id,
+      nodeId = side === "fp32" ? row.fp32_node_id : row.quantized_node_id;
+    if (!modelId || !nodeId)
+      throw new Error("No reliable graph node is available for this tensor");
+    await open(modelId);
+    if (error.value || !report.value || report.value.artifact.id !== modelId)
+      throw new Error(error.value || "Diagnostic model could not be opened");
+    if (report.value.artifact.sha256 !== result.models[side].sha256)
+      throw new Error("Diagnostic model hash differs from the saved graph");
+    diagnosticContext.value = { report: result, low, high };
+    selectedNode.value = nodeId;
+    focusRequest.value = { modelId, nodeId, revision: Date.now() };
+  }
   const error = ref("");
   const loading = ref(false);
   const running = computed(
@@ -44,6 +103,14 @@ export const useModels = defineStore("models", () => {
       });
       if (current !== epoch || request !== selectionRequest) return;
       report.value = next;
+      if (
+        diagnosticContext.value &&
+        ![
+          diagnosticContext.value.report.models.fp32?.id,
+          diagnosticContext.value.report.models.quantized?.id,
+        ].includes(id)
+      )
+        diagnosticContext.value = null;
       selectedNode.value = null;
       subgraphKey.value = "";
       error.value = "";
@@ -62,6 +129,8 @@ export const useModels = defineStore("models", () => {
     report.value = null;
     job.value = null;
     selectedNode.value = null;
+    diagnosticContext.value = null;
+    focusRequest.value = null;
     error.value = "";
     loading.value = false;
     handled.clear();
@@ -141,5 +210,9 @@ export const useModels = defineStore("models", () => {
     poll,
     stop,
     loadWorkspace,
+    diagnosticContext,
+    diagnosticBadges,
+    focusRequest,
+    openDiagnostic,
   };
 });

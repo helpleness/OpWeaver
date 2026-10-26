@@ -149,6 +149,22 @@ func TestRealModelImportThroughAppAPI(t *testing.T) {
 			t.Fatal(quantResult)
 		}
 		call("lab.export", map[string]any{"project": project, "id": quantJob["id"], "directory": t.TempDir()})
+		diagnosticData := call("lab.dataset.create", map[string]any{"project": project, "config": map[string]any{"source_model_id": job["id"], "name": "Diagnostic", "role": "diagnostic", "mode": "random", "count": 3, "seed": 2042, "shapes": map[string]any{"image": []int{2, 3, 8, 8}}}})
+		quantArtifact := quantResult["optimization"].(map[string]any)["artifact"].(map[string]any)
+		diagnosticJob := call("diagnostic.start", map[string]any{"project": project, "config": map[string]any{"fp32_model_id": job["id"], "quantized_model_id": quantArtifact["id"], "dataset_id": diagnosticData["id"], "max_samples": 2}})
+		deadline = time.Now().Add(30 * time.Second)
+		for diagnosticJob["state"] != "COMPLETED" && time.Now().Before(deadline) {
+			if diagnosticJob["state"] == "FAILED" {
+				t.Fatal(diagnosticJob["error"])
+			}
+			time.Sleep(100 * time.Millisecond)
+			diagnosticJob = call("diagnostic.status", map[string]any{"id": diagnosticJob["id"]})
+		}
+		diagnosticResult := call("diagnostic.load", map[string]any{"project": project, "id": diagnosticJob["id"]})
+		if diagnosticResult["status"] != "Succeeded" || len(diagnosticResult["captures"].([]any)) != 2 || diagnosticResult["matching_summary"].(map[string]any)["comparable_tensors"].(float64) < 1 {
+			t.Fatal(diagnosticResult)
+		}
+		call("diagnostic.export", map[string]any{"project": project, "id": diagnosticJob["id"], "directory": t.TempDir()})
 	}
 	call("project.load", map[string]any{"path": project})
 	if _, err := app.Request("model.load", `{"project":"`+filepath.ToSlash(project)+`","id":"../escape"}`); err == nil {

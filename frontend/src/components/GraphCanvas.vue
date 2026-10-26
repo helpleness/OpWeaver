@@ -29,6 +29,7 @@ const props = defineProps<{
   analysis?: AnalysisGraph | null;
   selectedNode?: string | null;
   highlighted?: string[];
+  diagnosticBadges?: Record<string, string>;
 }>();
 const editor = useEditor();
 const code = useCode();
@@ -36,11 +37,46 @@ const emit = defineEmits<{
   error: [message: string];
   select: [id: string | null];
 }>();
-const { screenToFlowCoordinate, fitView, getNodes } = useVueFlow({
-  id: "model",
-});
+const { screenToFlowCoordinate, fitView, setCenter, getNodes, dimensions } =
+  useVueFlow({
+    id: "model",
+  });
 const dragging = ref(false);
 const nodes = shallowRef<Node[]>([]);
+const focusTarget = ref<string | null>(null);
+let explicitFocus = false;
+let activeFocus: string | null = null;
+async function applyFocus() {
+  const id = focusTarget.value;
+  if (!id) return;
+  await nextTick();
+  if (await fitView({ nodes: [id], padding: 0.5, maxZoom: 1 })) {
+    if (focusTarget.value === id) focusTarget.value = null;
+    return;
+  }
+  // Virtualized offscreen nodes have no measured dimensions yet. Bring their
+  // saved position into view, then fit precisely when Vue Flow measures them.
+  const node = nodes.value.find((n) => n.id === id);
+  if (node)
+    await setCenter(node.position.x + 100, node.position.y + 55, { zoom: 0.9 });
+}
+function focus(id: string) {
+  explicitFocus = true;
+  activeFocus = id;
+  focusTarget.value = id;
+  void applyFocus();
+}
+function restoreFocus() {
+  if (explicitFocus && activeFocus) {
+    focusTarget.value = activeFocus;
+    void applyFocus();
+  }
+}
+// The retained training panel and inspector can resize the canvas after mount.
+// Fit against the final viewport, including initial WebView layout changes.
+watch(() => [dimensions.value.width, dimensions.value.height], restoreFocus, {
+  flush: "post",
+});
 const analysisPositions = ref<Record<string, { x: number; y: number }>>({});
 const external = computed(() => props.analysis !== undefined);
 const analysis = computed(() =>
@@ -75,7 +111,10 @@ function syncNodes() {
               x: 60 + (i % 4) * 245,
               y: 80 + Math.floor(i / 4) * 190,
             }),
-      data: { analysis: node },
+      data: {
+        analysis: node,
+        diagnosticLevel: props.diagnosticBadges?.[node.id],
+      },
       style: {
         opacity:
           external.value &&
@@ -112,6 +151,7 @@ watch(
     code.analysisSelection,
     props.selectedNode,
     props.highlighted,
+    props.diagnosticBadges,
   ],
   syncNodes,
   { deep: true, immediate: true },
@@ -241,6 +281,9 @@ function arrange() {
 watch(
   () => analysis.value?.id ?? editor.graph.id,
   () => {
+    explicitFocus = false;
+    activeFocus = null;
+    focusTarget.value = null;
     try {
       analysisPositions.value = JSON.parse(
         sessionStorage.getItem(
@@ -251,12 +294,14 @@ watch(
       analysisPositions.value = {};
     }
     syncNodes();
-    setTimeout(() => fitView({ padding: 0.2, duration: 150 }), 100);
+    setTimeout(() => {
+      if (!explicitFocus) void fitView({ padding: 0.2, duration: 150 });
+    }, 100);
   },
 );
 defineExpose({
   fit: () => fitView({ padding: 0.2 }),
-  focus: (id: string) => fitView({ nodes: [id], padding: 0.5, maxZoom: 1 }),
+  focus,
 });
 </script>
 
@@ -330,7 +375,7 @@ defineExpose({
       :min-zoom="0.15"
       :max-zoom="2"
       :default-viewport="{ x: 20, y: 60, zoom: 0.8 }"
-      fit-view-on-init
+      :fit-view-on-init="!selectedNode"
       :only-render-visible-elements="external"
       :delete-key-code="readonly ? null : ['Backspace', 'Delete']"
       :nodes-connectable="!readonly"
@@ -339,6 +384,8 @@ defineExpose({
       selection-key-code="Shift"
       :node-drag-threshold="3"
       @connect="connect"
+      @init="restoreFocus"
+      @nodes-initialized="applyFocus"
       @node-click="({ node }) => select(node.id)"
       @pane-click="clearSelection"
       @nodes-change="nodesChange"
@@ -351,6 +398,7 @@ defineExpose({
           :id="props.id"
           :selected="props.selected"
           :analysis="props.data.analysis"
+          :diagnostic-level="props.data.diagnosticLevel"
       /></template>
       <Background :gap="20" :size="1" pattern-color="#29313f" /><Controls
         position="bottom-left"

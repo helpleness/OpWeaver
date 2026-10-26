@@ -9,7 +9,7 @@
     "test": "vitest run src",
     "test:e2e": "playwright test",
     "format": "prettier --write src e2e *.ts",
-    "schema": "json2ts -i ../schemas/graph-ir.schema.json -o src/generated/graph-ir.ts && json2ts -i ../schemas/training-config.schema.json -o src/generated/training-config.ts && json2ts -i ../schemas/analysis-graph.schema.json -o src/generated/analysis-graph.ts && json2ts -i ../schemas/source-mapping.schema.json -o src/generated/source-mapping.ts && json2ts -i ../schemas/onnx-report.schema.json -o src/generated/onnx-report.ts && json2ts -i ../schemas/optimization-experiment.schema.json -o src/generated/optimization-experiment.ts"
+    "schema": "json2ts -i ../schemas/graph-ir.schema.json -o src/generated/graph-ir.ts && json2ts -i ../schemas/training-config.schema.json -o src/generated/training-config.ts && json2ts -i ../schemas/analysis-graph.schema.json -o src/generated/analysis-graph.ts && json2ts -i ../schemas/source-mapping.schema.json -o src/generated/source-mapping.ts && json2ts -i ../schemas/onnx-report.schema.json -o src/generated/onnx-report.ts && json2ts -i ../schemas/optimization-experiment.schema.json -o src/generated/optimization-experiment.ts && json2ts -i ../schemas/quantization-diagnostic.schema.json -o src/generated/quantization-diagnostic.ts"
   },
   "dependencies": {
     "@vue-flow/background": "^1.3.2",

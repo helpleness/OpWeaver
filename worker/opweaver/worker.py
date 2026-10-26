@@ -12,6 +12,7 @@ from .benchmark import compare_benchmarks
 from .builder import GraphModule
 from .code_tasks import CaptureTasks
 from .codegen import generate
+from .diagnostic_tasks import DiagnosticTasks
 from .importers import builtin_importers
 from .ir import Graph
 from .lab_tasks import OptimizationTasks
@@ -32,8 +33,40 @@ class Worker:
         self.code_tasks = CaptureTasks(lambda event: send({"protocol": 1, **event}))
         self.model_tasks = ModelTasks(lambda event: send({"protocol": 1, **event}))
         self.lab_tasks = OptimizationTasks(lambda event: send({"protocol": 1, **event}))
+        self.diagnostic_tasks = DiagnosticTasks(lambda event: send({"protocol": 1, **event}))
 
     def dispatch(self, method: str, params: dict):
+        if method.startswith("diagnostic."):
+            if method == "diagnostic.start":
+                if self.engine.active() or any(
+                    t.is_alive()
+                    for manager in (self.code_tasks, self.model_tasks, self.lab_tasks)
+                    for t in manager.threads.values()
+                ):
+                    raise ValueError("Stop other compute/import tasks before diagnostics")
+                return self.diagnostic_tasks.start(params)
+            if method == "diagnostic.status":
+                return self.diagnostic_tasks.snapshot(params["id"])
+            if method == "diagnostic.stop":
+                return self.diagnostic_tasks.stop(params["id"])
+            if method == "diagnostic.history":
+                return self.diagnostic_tasks.history(params["project"])
+            if method == "diagnostic.load":
+                return self.diagnostic_tasks.load(params["project"], params["id"])
+            if method == "diagnostic.export":
+                return self.diagnostic_tasks.export(params)
+            raise ValueError("Unknown diagnostic operation")
+        if method in (
+            "lab.start",
+            "lab.dataset.create",
+            "train.start",
+            "forward",
+            "model.import.start",
+            "code.capture.start",
+        ) and any(t.is_alive() for t in self.diagnostic_tasks.threads.values()):
+            raise ValueError(
+                "Stop the quantization diagnostic before starting other compute/import work"
+            )
         if method.startswith("lab.dataset."):
             from .datasets import availability, create_dataset, load_dataset
 
@@ -212,6 +245,7 @@ class Worker:
         if method == "train.history":
             return RunStore(Path(params["project"])).recover(set(self.engine.jobs))
         if method == "shutdown":
+            self.diagnostic_tasks.shutdown()
             self.lab_tasks.shutdown()
             self.model_tasks.shutdown()
             self.code_tasks.shutdown()
@@ -253,6 +287,7 @@ def main():
     worker.code_tasks.shutdown()
     worker.model_tasks.shutdown()
     worker.lab_tasks.shutdown()
+    worker.diagnostic_tasks.shutdown()
 
 
 if __name__ == "__main__":

@@ -196,6 +196,18 @@ func (a *App) Request(method, payload string) (string, error) {
 		}
 		result = snapshot
 	default:
+		diagnosticMethods := map[string]bool{"diagnostic.start": true, "diagnostic.status": true, "diagnostic.stop": true, "diagnostic.history": true, "diagnostic.load": true, "diagnostic.export": true}
+		if diagnosticMethods[method] {
+			if method != "diagnostic.status" && method != "diagnostic.stop" {
+				snapshot, err := project.Load(readString("project"))
+				if err != nil {
+					return "", err
+				}
+				params["project"], _ = json.Marshal(snapshot.Path)
+			}
+			data, err := a.worker.Call(ctx, method, params)
+			return string(data), err
+		}
 		labMethods := map[string]bool{"lab.dataset.create": true, "lab.dataset.list": true, "lab.dataset.load": true, "lab.backends": true, "lab.start": true, "lab.status": true, "lab.stop": true, "lab.history": true, "lab.load": true, "lab.export": true, "lab.compare": true, "lab.environment.configure": true, "lab.environment.probe": true, "lab.workflow.preview": true, "lab.workflow.save": true, "lab.workflow.list": true}
 		if labMethods[method] {
 			if method != "lab.backends" && method != "lab.status" && method != "lab.stop" {

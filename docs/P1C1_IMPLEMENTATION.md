@@ -1,5 +1,7 @@
 # P1-C1：本地分类数据与真实任务评估
 
+> 本文保留 C1 阶段交付记录；后续已实现的逐层诊断见 [P1C2_IMPLEMENTATION.md](P1C2_IMPLEMENTATION.md)，下述 C2 未实现的描述仅指当时状态。
+
 2026-10-23。本轮按 P1-C 任务允许的子阶段顺序，完成 C1 的数据→FP32→Olive INT8→同集评估→Benchmark→导出与恢复。C2/C3 尚未实现，不能据本轮输出声称已有逐层诊断、敏感节点归因或图中选点重新量化闭环。实测与构建记录见 [VALIDATION.md](VALIDATION.md)。
 
 ## 能力与边界

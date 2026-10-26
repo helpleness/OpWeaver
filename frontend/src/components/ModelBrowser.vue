@@ -109,6 +109,21 @@ async function select(id: string) {
   await nextTick();
   canvas.value?.focus(id);
 }
+async function focusDiagnosticNode() {
+  const request = models.focusRequest;
+  if (!request) return;
+  if (
+    request?.modelId === models.report?.artifact.id &&
+    original.value?.nodes.some((n) => n.id === request.nodeId)
+  )
+    await select(request.nodeId);
+}
+watch(
+  () => [models.focusRequest?.revision, original.value?.id],
+  focusDiagnosticNode,
+  { flush: "post" },
+);
+onMounted(() => void nextTick(focusDiagnosticNode));
 watch(
   () => models.report?.artifact.id,
   () => {
@@ -303,12 +318,20 @@ defineExpose({
         {{ original?.nodes.find((n) => n.id === id)?.label }}
       </button>
     </div>
+    <p v-if="models.diagnosticContext" class="diagnostic-graph-legend">
+      Diagnostic {{ models.diagnosticContext.report.id.slice(0, 8) }} ·
+      activation MAE colors: low ≤ {{ models.diagnosticContext.low ?? "—" }},
+      medium ≤ {{ models.diagnosticContext.high ?? "—" }}, high above. Gray:
+      unavailable. Relative distribution, not quality or root-cause attribution.
+      Expand groups for individual node badges.
+    </p>
     <div class="import-graph-area" v-if="models.report">
       <GraphCanvas
         ref="canvas"
         :analysis="projected"
         :selected-node="models.selectedNode"
         :highlighted="highlighted"
+        :diagnostic-badges="models.diagnosticBadges"
         @select="models.selectedNode = $event"
         @error="models.error = $event"
       />
@@ -455,3 +478,14 @@ defineExpose({
     </div>
   </section>
 </template>
+<style scoped>
+.diagnostic-graph-legend {
+  margin: 0;
+  padding: 9px 16px;
+  color: #9ebccd;
+  font-size: 10px;
+  background: #1a2b37;
+  border-bottom: 1px solid #375364;
+  line-height: 1.5;
+}
+</style>

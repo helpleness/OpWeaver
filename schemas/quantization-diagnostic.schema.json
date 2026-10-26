@@ -1,0 +1,534 @@
+{
+  "$defs": {
+    "DiagnosticConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": "1.0",
+          "default": "1.0",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "fp32_model_id": {
+          "pattern": "^[0-9a-f]{32}$",
+          "title": "Fp32 Model Id",
+          "type": "string"
+        },
+        "quantized_model_id": {
+          "pattern": "^[0-9a-f]{32}$",
+          "title": "Quantized Model Id",
+          "type": "string"
+        },
+        "dataset_id": {
+          "pattern": "^[0-9a-f]{32}$",
+          "title": "Dataset Id",
+          "type": "string"
+        },
+        "max_samples": {
+          "default": 3,
+          "maximum": 16,
+          "minimum": 1,
+          "title": "Max Samples",
+          "type": "integer"
+        },
+        "max_tensors": {
+          "default": 32,
+          "maximum": 256,
+          "minimum": 2,
+          "title": "Max Tensors",
+          "type": "integer"
+        },
+        "selected_nodes": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 64,
+          "title": "Selected Nodes",
+          "type": "array"
+        },
+        "operator_types": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 64,
+          "title": "Operator Types",
+          "type": "array"
+        },
+        "memory_budget_mb": {
+          "default": 128,
+          "maximum": 512,
+          "minimum": 1,
+          "title": "Memory Budget Mb",
+          "type": "integer"
+        },
+        "disk_budget_mb": {
+          "default": 512,
+          "maximum": 1024,
+          "minimum": 1,
+          "title": "Disk Budget Mb",
+          "type": "integer"
+        },
+        "timeout": {
+          "default": 180,
+          "maximum": 900,
+          "minimum": 3,
+          "title": "Timeout",
+          "type": "integer"
+        },
+        "provider": {
+          "const": "CPUExecutionProvider",
+          "default": "CPUExecutionProvider",
+          "title": "Provider",
+          "type": "string"
+        },
+        "include_weights": {
+          "default": true,
+          "title": "Include Weights",
+          "type": "boolean"
+        },
+        "temporary_policy": {
+          "const": "delete_on_terminal",
+          "default": "delete_on_terminal",
+          "title": "Temporary Policy",
+          "type": "string"
+        }
+      },
+      "required": [
+        "fp32_model_id",
+        "quantized_model_id",
+        "dataset_id"
+      ],
+      "title": "DiagnosticConfig",
+      "type": "object"
+    },
+    "LayerErrorRecord": {
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": "1.0",
+          "default": "1.0",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "fp32_tensor": {
+          "title": "Fp32 Tensor",
+          "type": "string"
+        },
+        "quantized_tensor": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Quantized Tensor"
+        },
+        "fp32_node_id": {
+          "title": "Fp32 Node Id",
+          "type": "string"
+        },
+        "quantized_node_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Quantized Node Id"
+        },
+        "quantized_tensor_producer_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Quantized Tensor Producer Id"
+        },
+        "node_name": {
+          "default": "",
+          "title": "Node Name",
+          "type": "string"
+        },
+        "node_name_unique": {
+          "default": false,
+          "title": "Node Name Unique",
+          "type": "boolean"
+        },
+        "operator_type": {
+          "title": "Operator Type",
+          "type": "string"
+        },
+        "fp32_shape": {
+          "anyOf": [
+            {
+              "items": {
+                "anyOf": [
+                  {
+                    "type": "integer"
+                  },
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Fp32 Shape"
+        },
+        "quantized_shape": {
+          "anyOf": [
+            {
+              "items": {
+                "anyOf": [
+                  {
+                    "type": "integer"
+                  },
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Quantized Shape"
+        },
+        "match_method": {
+          "default": "none",
+          "title": "Match Method",
+          "type": "string"
+        },
+        "match_status": {
+          "default": "Unmatched",
+          "enum": [
+            "Matched",
+            "Partially Matched",
+            "Unmatched",
+            "Unsupported"
+          ],
+          "title": "Match Status",
+          "type": "string"
+        },
+        "message": {
+          "default": "",
+          "title": "Message",
+          "type": "string"
+        },
+        "kind": {
+          "default": "activation",
+          "enum": [
+            "activation",
+            "weight"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "samples": {
+          "items": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "title": "Samples",
+          "type": "array"
+        },
+        "aggregate": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Aggregate"
+        },
+        "quantization": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Quantization"
+        }
+      },
+      "required": [
+        "id",
+        "fp32_tensor",
+        "fp32_node_id",
+        "operator_type"
+      ],
+      "title": "LayerErrorRecord",
+      "type": "object"
+    },
+    "TensorCaptureResult": {
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": "1.0",
+          "default": "1.0",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "sample_index": {
+          "title": "Sample Index",
+          "type": "integer"
+        },
+        "feed_fingerprint": {
+          "title": "Feed Fingerprint",
+          "type": "string"
+        },
+        "example_count": {
+          "title": "Example Count",
+          "type": "integer"
+        },
+        "fp32_tensors": {
+          "title": "Fp32 Tensors",
+          "type": "integer"
+        },
+        "quantized_tensors": {
+          "title": "Quantized Tensors",
+          "type": "integer"
+        },
+        "captured_bytes": {
+          "title": "Captured Bytes",
+          "type": "integer"
+        },
+        "error": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Error"
+        }
+      },
+      "required": [
+        "sample_index",
+        "feed_fingerprint",
+        "example_count",
+        "fp32_tensors",
+        "quantized_tensors",
+        "captured_bytes"
+      ],
+      "title": "TensorCaptureResult",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "1.0",
+      "default": "1.0",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "diagnostic_version": {
+      "default": "1.0",
+      "title": "Diagnostic Version",
+      "type": "string"
+    },
+    "id": {
+      "pattern": "^[0-9a-f]{32}$",
+      "title": "Id",
+      "type": "string"
+    },
+    "config": {
+      "$ref": "#/$defs/DiagnosticConfig"
+    },
+    "status": {
+      "default": "Pending",
+      "enum": [
+        "Pending",
+        "Running",
+        "Succeeded",
+        "Failed",
+        "Cancelled"
+      ],
+      "title": "Status",
+      "type": "string"
+    },
+    "success": {
+      "default": false,
+      "title": "Success",
+      "type": "boolean"
+    },
+    "created_at": {
+      "title": "Created At",
+      "type": "number"
+    },
+    "finished_at": {
+      "anyOf": [
+        {
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Finished At"
+    },
+    "elapsed_seconds": {
+      "anyOf": [
+        {
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Elapsed Seconds"
+    },
+    "sample_unit": {
+      "default": "One sample is one saved dataset batch/inference feed; examples are counted separately",
+      "title": "Sample Unit",
+      "type": "string"
+    },
+    "models": {
+      "additionalProperties": true,
+      "title": "Models",
+      "type": "object"
+    },
+    "dataset": {
+      "anyOf": [
+        {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Dataset"
+    },
+    "environment": {
+      "additionalProperties": true,
+      "title": "Environment",
+      "type": "object"
+    },
+    "lineage": {
+      "additionalProperties": true,
+      "title": "Lineage",
+      "type": "object"
+    },
+    "quantization": {
+      "additionalProperties": true,
+      "title": "Quantization",
+      "type": "object"
+    },
+    "resources": {
+      "additionalProperties": true,
+      "title": "Resources",
+      "type": "object"
+    },
+    "captures": {
+      "items": {
+        "$ref": "#/$defs/TensorCaptureResult"
+      },
+      "title": "Captures",
+      "type": "array"
+    },
+    "records": {
+      "items": {
+        "$ref": "#/$defs/LayerErrorRecord"
+      },
+      "title": "Records",
+      "type": "array"
+    },
+    "matching_summary": {
+      "additionalProperties": true,
+      "title": "Matching Summary",
+      "type": "object"
+    },
+    "warnings": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Warnings",
+      "type": "array"
+    },
+    "limitations": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Limitations",
+      "type": "array"
+    },
+    "logs": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Logs",
+      "type": "array"
+    },
+    "diagnostics": {
+      "items": {
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "title": "Diagnostics",
+      "type": "array"
+    },
+    "error": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Error"
+    }
+  },
+  "required": [
+    "id",
+    "config",
+    "created_at"
+  ],
+  "title": "DiagnosticResult",
+  "type": "object"
+}
